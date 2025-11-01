@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ExtensionManifest Version="9.0" ExtensionBundleId="com.darkpanel" ExtensionBundleVersion="1.2">
+  <ExtensionList>
+    <Extension Id="com.darkpanel.panel" Version="1.2"/>
+  </ExtensionList>
+  <ExecutionEnvironment>
+    <HostList>
+      <Host Name="AEFT" Version="[17.0,99.9]"/>
+    </HostList>
+    <LocaleList>
+      <Locale Code="All"/>
+    </LocaleList>
+  </ExecutionEnvironment>
+  <DispatchInfoList>
+    <Extension Id="com.darkpanel.panel">
+      <DispatchInfo>
+        <Resources>
+          <MainPath>./index.html</MainPath>
+          <ScriptPath>./jsx/applyPreset.jsx</ScriptPath>
+        </Resources>
+        <UI>
+          <Type>Panel</Type>
+          <Menu>darkPanel</Menu>
+          <Geometry>
+            <Size>
+              <Height>500</Height>
+              <Width>350</Width>
+            </Size>
+          </Geometry>
+        </UI>
+      </DispatchInfo>
+    </Extension>
+  </DispatchInfoList>
+</ExtensionManifest>
