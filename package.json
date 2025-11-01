@@ -1,0 +1,11 @@
+{
+    "name": "darkpanel",
+    "version": "1.0.0",
+    "description": "After Effects darkPanel Extension",
+    "type": "module",
+    "scripts": {
+        "update": "node update-version.js"
+    },
+    "author": "darken_ae",
+    "license": "MIT"
+}
