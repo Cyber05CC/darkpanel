@@ -340,4 +340,60 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     init();
+
+    // 🔹 Auto-update checker
+    async function checkForUpdates() {
+        try {
+            const localVersion = localStorage.getItem('darkpanel_version') || '0.0.0';
+            const response = await fetch(
+                'https://darkpanel.vercel.app/version.json?t=' + Date.now()
+            );
+            const data = await response.json();
+
+            if (data.version !== localVersion) {
+                showUpdateAlert(data.version, data.changelog);
+            }
+        } catch (err) {
+            console.log('Update check failed:', err);
+        }
+    }
+
+    function showUpdateAlert(newVersion, changelog) {
+        const alertBox = document.createElement('div');
+        alertBox.className = 'custom-alert visible';
+        alertBox.innerHTML = `
+        <div class="alert-content">
+            <div class="alert-icon">
+                <video autoplay muted loop playsinline class="alert-video">
+                    <source src="./assets/videos/gojo.mp4" type="video/mp4" />
+                </video>
+            </div>
+            <div class="alert-message">
+                <strong>Update available!</strong><br>
+                New version: ${newVersion}<br>
+                <small>${changelog}</small>
+            </div>
+            <div style="display:flex;justify-content:center;gap:0.5rem;margin-top:8px;">
+                <button class="alert-close">Later</button>
+                <button class="alert-update">Update Now</button>
+            </div>
+        </div>
+    `;
+        document.body.appendChild(alertBox);
+
+        alertBox.querySelector('.alert-close').addEventListener('click', () => {
+            alertBox.remove();
+        });
+
+        alertBox.querySelector('.alert-update').addEventListener('click', () => {
+            localStorage.setItem('darkpanel_version', newVersion);
+            alertBox.remove();
+            window.location.reload(true);
+        });
+    }
+
+    // 🔹 Auto-check every launch
+    window.addEventListener('load', () => {
+        setTimeout(checkForUpdates, 1000); // 1 sekunddan keyin tekshiradi
+    });
 });
