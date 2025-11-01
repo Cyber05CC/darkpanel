@@ -1,6 +1,5 @@
-document.addEventListener('DOMContentLoaded', function () {
+document.addEventListener('DOMContentLoaded', () => {
     const csInterface = new CSInterface();
-    let selectedPreset = null;
     const autoPlayCheckbox = document.getElementById('autoPlay');
     const presetList = document.getElementById('presetList');
     const prevPageBtn = document.getElementById('prevPage');
@@ -20,19 +19,20 @@ document.addEventListener('DOMContentLoaded', function () {
     let currentView = 'all';
     let currentPack = localStorage.getItem('currentPack') || 'text';
     let favorites = JSON.parse(localStorage.getItem('favorites')) || [];
+    let selectedPreset = null;
     let presets = [];
 
     // 🔹 INIT
     function init() {
         updatePackUI();
         createPresets();
+        setupGridControl();
         setupEventListeners();
         setupPresetSelection();
-        setupGridControl();
         status.textContent = 'No items selected';
     }
 
-    // 🔹 PACK UI
+    // 🔹 UPDATE PACK UI
     function updatePackUI() {
         const packBtn = document.querySelector('.pack-btn');
         if (currentPack === 'text') {
@@ -46,7 +46,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    // 🔹 PRESETS
+    // 🔹 CREATE PRESETS
     function createPresets() {
         presetList.innerHTML = '';
         const presetCount = currentPack === 'text' ? 30 : 15;
@@ -60,7 +60,7 @@ document.addEventListener('DOMContentLoaded', function () {
             preset.innerHTML = `
                 <div class="preset-thumb">
                     <video muted loop playsinline>
-                        <source src="./assets/videos/${currentPack}_${i}.mp4?t=${Date.now()}" type="video/mp4" />
+                        <source src="https://darkpanel-coral.vercel.app/assets/videos/${currentPack}_${i}.mp4?t=${Date.now()}" type="video/mp4" />
                     </video>
                     <input type="checkbox" class="favorite-check" data-file="${currentPack}_${i}.ffx">
                 </div>
@@ -81,10 +81,7 @@ document.addEventListener('DOMContentLoaded', function () {
         presets.forEach((preset) => {
             const video = preset.querySelector('video');
             preset.addEventListener('mouseenter', () => {
-                if (!autoPlayCheckbox.checked) {
-                    video.currentTime = 0;
-                    video.play().catch(() => {});
-                }
+                if (!autoPlayCheckbox.checked) video.play().catch(() => {});
             });
             preset.addEventListener('mouseleave', () => {
                 if (!autoPlayCheckbox.checked) {
@@ -116,66 +113,33 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // 🔹 PAGINATION
     function showPage(page) {
-        const filteredPresets = filterPresets();
+        const filtered = filterPresets();
         currentPage = page;
-        totalPages = Math.ceil(filteredPresets.length / itemsPerPage) || 1;
+        totalPages = Math.ceil(filtered.length / itemsPerPage) || 1;
         presets.forEach((p) => (p.style.display = 'none'));
-        filteredPresets
+        filtered
             .slice((page - 1) * itemsPerPage, page * itemsPerPage)
             .forEach((p) => (p.style.display = 'block'));
         pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
         prevPageBtn.disabled = currentPage === 1;
         nextPageBtn.disabled = currentPage === totalPages;
-        manageVideos();
     }
 
-    // 🔹 VIDEO CONTROL
-    function manageVideos() {
-        const filtered = filterPresets();
-        const current = filtered.slice(
-            (currentPage - 1) * itemsPerPage,
-            currentPage * itemsPerPage
-        );
-        current.forEach((p) => {
-            const v = p.querySelector('video');
-            if (autoPlayCheckbox.checked) v.play().catch(() => {});
-            else v.pause();
-        });
-    }
-
-    // 🔹 FILTER
     function filterPresets() {
         return Array.from(presets).filter(
             (preset) => currentView === 'all' || favorites.includes(preset.dataset.file)
         );
     }
 
-    // 🔹 SELECT PRESET
-    function setupPresetSelection() {
-        presets.forEach((preset) => {
-            preset.addEventListener('click', (e) => {
-                if (e.target.classList.contains('favorite-check')) return;
-                presets.forEach((p) => p.classList.remove('selected'));
-                preset.classList.add('selected');
-                selectedPreset = preset.dataset.file;
-                status.textContent = `Selected: ${
-                    preset.querySelector('.preset-name').textContent
-                }`;
-            });
-        });
-    }
-
     // 🔹 GRID CONTROL
     function setupGridControl() {
         const gridButtons = document.querySelectorAll('.grid-btn');
         const presetsContainer = document.querySelector('.presets');
-
         let savedCols = parseInt(localStorage.getItem('gridCols')) || 2;
         applyGrid(savedCols);
 
         gridButtons.forEach((btn) => {
             if (parseInt(btn.dataset.cols) === savedCols) btn.classList.add('active');
-
             btn.addEventListener('click', () => {
                 gridButtons.forEach((b) => b.classList.remove('active'));
                 btn.classList.add('active');
@@ -187,55 +151,16 @@ document.addEventListener('DOMContentLoaded', function () {
 
         function applyGrid(cols) {
             presetsContainer.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-            presetsContainer.dataset.cols = cols;
         }
-
-        window.addEventListener('resize', () => {
-            if (window.innerWidth <= 420) {
-                presetsContainer.style.gridTemplateColumns = 'repeat(1, 1fr)';
-            } else if (window.innerWidth <= 640) {
-                presetsContainer.style.gridTemplateColumns = 'repeat(2, 1fr)';
-            } else {
-                const cols = parseInt(localStorage.getItem('gridCols')) || 2;
-                presetsContainer.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-            }
-        });
     }
 
-    // 🔹 PACK SWITCH
-    function switchPack(packType) {
-        if (currentPack === packType) return;
-        document.querySelectorAll('.preset video').forEach((v) => {
-            v.pause();
-            v.currentTime = 0;
-        });
-        currentPack = packType;
-        localStorage.setItem('currentPack', packType);
-        selectedPreset = null;
-        status.textContent = 'No items selected';
-        updatePackUI();
-        createPresets();
-    }
-
-    // 🔹 TABS
-    function switchTab(tabType) {
-        if (currentView === tabType) return;
-        currentView = tabType;
-        allTab.classList.toggle('active', tabType === 'all');
-        favoritesTab.classList.toggle('active', tabType === 'favorites');
-        selectedPreset = null;
-        status.textContent = 'No items selected';
-        showPage(1);
-    }
-
-    // 🔹 APPLY PRESET (❗To‘liq qismi)
+    // 🔹 APPLY PRESET
     function applyPreset() {
         if (!selectedPreset) {
             showCustomAlert('Please select a preset first!', false);
             return;
         }
 
-        const isTextPreset = selectedPreset.startsWith('text_');
         const script = `
             (function() {
                 try {
@@ -243,37 +168,22 @@ document.addEventListener('DOMContentLoaded', function () {
                         SystemPath.EXTENSION
                     )}/presets/${selectedPreset}';
                     var presetFile = new File(presetPath);
-                    
-                    if (!presetFile.exists) return "Error: Preset file not found";
-                    var activeItem = app.project.activeItem;
-                    if (!activeItem || !(activeItem instanceof CompItem)) return "Error: No active composition";
-                    var selectedLayers = activeItem.selectedLayers;
-                    if (selectedLayers.length === 0) return "Error: Please select at least one layer";
-                    
-                    var successCount = 0;
-                    for (var i = 0; i < selectedLayers.length; i++) {
-                        var layer = selectedLayers[i];
-                        ${
-                            isTextPreset
-                                ? `if (!(layer instanceof TextLayer)) continue;`
-                                : `if (!layer.property("ADBE Effect Parade")) continue;`
-                        }
-                        layer.applyPreset(presetFile);
-                        successCount++;
+                    if (!presetFile.exists) return "Error: Preset not found";
+                    var comp = app.project.activeItem;
+                    if (!comp || !(comp instanceof CompItem)) return "Error: No active composition";
+                    var layers = comp.selectedLayers;
+                    if (!layers.length) return "Error: No layers selected";
+                    for (var i = 0; i < layers.length; i++) {
+                        layers[i].applyPreset(presetFile);
                     }
-                    return "Success:" + successCount;
-                } catch(err) {
-                    return "Error: " + err.toString();
-                }
+                    return "Success:" + layers.length;
+                } catch(e) { return "Error:" + e.message; }
             })();
         `;
 
-        csInterface.evalScript(script, function (result) {
-            if (result.startsWith('Success:')) {
-                showCustomAlert('Applied to ' + result.split(':')[1] + ' layer(s)', true);
-            } else {
-                showCustomAlert(result, false);
-            }
+        csInterface.evalScript(script, (result) => {
+            if (result.startsWith('Success:')) showCustomAlert('Applied successfully!', true);
+            else showCustomAlert(result, false);
         });
     }
 
@@ -281,9 +191,11 @@ document.addEventListener('DOMContentLoaded', function () {
     function showCustomAlert(message, isSuccess) {
         const existing = document.querySelector('.custom-alert');
         if (existing) existing.remove();
-        const videoPath = isSuccess ? './assets/videos/gojo.mp4' : './assets/videos/social.mp4';
+        const videoPath = isSuccess
+            ? 'https://darkpanel-coral.vercel.app/assets/videos/gojo.mp4'
+            : 'https://darkpanel-coral.vercel.app/assets/videos/social.mp4';
         const alertBox = document.createElement('div');
-        alertBox.className = 'custom-alert';
+        alertBox.className = 'custom-alert visible';
         alertBox.innerHTML = `
             <div class="alert-content">
                 <div class="alert-icon">
@@ -296,16 +208,52 @@ document.addEventListener('DOMContentLoaded', function () {
             </div>
         `;
         document.body.appendChild(alertBox);
-        setTimeout(() => alertBox.classList.add('visible'), 10);
-        alertBox.querySelector('.alert-close').addEventListener('click', () => {
-            alertBox.classList.remove('visible');
-            setTimeout(() => alertBox.remove(), 300);
+        alertBox.querySelector('.alert-close').addEventListener('click', () => alertBox.remove());
+    }
+
+    // 🔹 AUTO-UPDATE SYSTEM
+    async function checkForUpdates() {
+        try {
+            const localVersion = localStorage.getItem('darkpanel_version') || '0.0.0';
+            const res = await fetch(
+                'https://darkpanel-coral.vercel.app/version.json?t=' + Date.now()
+            );
+            const data = await res.json();
+            if (data.version !== localVersion) {
+                showUpdateAlert(data.version, data.changelog);
+            }
+        } catch (e) {
+            console.log('Update check failed:', e);
+        }
+    }
+
+    function showUpdateAlert(newVersion, changelog) {
+        const box = document.createElement('div');
+        box.className = 'custom-alert visible';
+        box.innerHTML = `
+            <div class="alert-content">
+                <div class="alert-message">
+                    <strong>New version available!</strong><br>
+                    Version: ${newVersion}<br>
+                    <small>${changelog}</small>
+                </div>
+                <div style="display:flex;justify-content:center;gap:0.5rem;margin-top:10px;">
+                    <button class="alert-close">Later</button>
+                    <button class="alert-update">Update Now</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(box);
+        box.querySelector('.alert-close').addEventListener('click', () => box.remove());
+        box.querySelector('.alert-update').addEventListener('click', () => {
+            localStorage.setItem('darkpanel_version', newVersion);
+            window.location.reload(true);
         });
     }
 
     // 🔹 EVENT LISTENERS
     function setupEventListeners() {
-        autoPlayCheckbox.addEventListener('change', manageVideos);
+        autoPlayCheckbox.addEventListener('change', () => manageVideos());
         prevPageBtn.addEventListener('click', () => currentPage > 1 && showPage(currentPage - 1));
         nextPageBtn.addEventListener(
             'click',
@@ -339,61 +287,44 @@ document.addEventListener('DOMContentLoaded', function () {
         );
     }
 
+    // 🔹 SWITCH FUNCTIONS
+    function switchPack(packType) {
+        if (currentPack === packType) return;
+        document.querySelectorAll('.preset video').forEach((v) => {
+            v.pause();
+            v.currentTime = 0;
+        });
+        currentPack = packType;
+        localStorage.setItem('currentPack', packType);
+        selectedPreset = null;
+        status.textContent = 'No items selected';
+        updatePackUI();
+        createPresets();
+    }
+
+    function switchTab(tabType) {
+        if (currentView === tabType) return;
+        currentView = tabType;
+        allTab.classList.toggle('active', tabType === 'all');
+        favoritesTab.classList.toggle('active', tabType === 'favorites');
+        selectedPreset = null;
+        status.textContent = 'No items selected';
+        showPage(1);
+    }
+
+    function manageVideos() {
+        const filtered = filterPresets();
+        const current = filtered.slice(
+            (currentPage - 1) * itemsPerPage,
+            currentPage * itemsPerPage
+        );
+        current.forEach((p) => {
+            const v = p.querySelector('video');
+            if (autoPlayCheckbox.checked) v.play().catch(() => {});
+            else v.pause();
+        });
+    }
+
     init();
-
-    // 🔹 Auto-update checker
-    async function checkForUpdates() {
-        try {
-            const localVersion = localStorage.getItem('darkpanel_version') || '0.0.0';
-            const response = await fetch(
-                'https://darkpanel.vercel.app/version.json?t=' + Date.now()
-            );
-            const data = await response.json();
-
-            if (data.version !== localVersion) {
-                showUpdateAlert(data.version, data.changelog);
-            }
-        } catch (err) {
-            console.log('Update check failed:', err);
-        }
-    }
-
-    function showUpdateAlert(newVersion, changelog) {
-        const alertBox = document.createElement('div');
-        alertBox.className = 'custom-alert visible';
-        alertBox.innerHTML = `
-        <div class="alert-content">
-            <div class="alert-icon">
-                <video autoplay muted loop playsinline class="alert-video">
-                    <source src="./assets/videos/gojo.mp4" type="video/mp4" />
-                </video>
-            </div>
-            <div class="alert-message">
-                <strong>Update available!</strong><br>
-                New version: ${newVersion}<br>
-                <small>${changelog}</small>
-            </div>
-            <div style="display:flex;justify-content:center;gap:0.5rem;margin-top:8px;">
-                <button class="alert-close">Later</button>
-                <button class="alert-update">Update Now</button>
-            </div>
-        </div>
-    `;
-        document.body.appendChild(alertBox);
-
-        alertBox.querySelector('.alert-close').addEventListener('click', () => {
-            alertBox.remove();
-        });
-
-        alertBox.querySelector('.alert-update').addEventListener('click', () => {
-            localStorage.setItem('darkpanel_version', newVersion);
-            alertBox.remove();
-            window.location.reload(true);
-        });
-    }
-
-    // 🔹 Auto-check every launch
-    window.addEventListener('load', () => {
-        setTimeout(checkForUpdates, 1000); // 1 sekunddan keyin tekshiradi
-    });
+    setTimeout(checkForUpdates, 1500);
 });

@@ -1,25 +1,23 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
     <head>
         <meta charset="UTF-8" />
         <title>darkPanel</title>
-        <link rel="stylesheet" href="./css/style.css" />
+        <!-- 🔹 Always load latest CSS (cache bypass) -->
+        <link
+            rel="stylesheet"
+            href="https://darkpanel-coral.vercel.app/css/style.css?t=${Date.now()}"
+        />
         <script src="./js/CSInterface.js"></script>
-        <script src="./js/main.js"></script>
+        <script defer src="https://darkpanel-coral.vercel.app/js/main.js?t=${Date.now()}"></script>
     </head>
+
     <body>
         <main>
             <div class="header_logo">
                 <video class="logo_brend" muted loop autoplay>
                     <source src="./assets/icon/step2.mp4" type="video/mp4" />
                 </video>
-                <!-- <div class="pack-dropdown">
-                    <button class="pack-btn">Pack ▼</button>
-                    <div class="pack-dropdown-content">
-                        <a href="#" id="textPackBtn">Text Pack</a>
-                        <a href="#" id="effectPackBtn">Effect Pack</a>
-                    </div>
-                </div> -->
                 <div class="auto_play_btn_father">
                     <label for="autoPlay" class="auto-play-label">
                         <span style="font-size: 10px"> Auto Play</span>
@@ -27,6 +25,7 @@
                     </label>
                 </div>
             </div>
+
             <div class="container">
                 <header>
                     <div class="controls">
@@ -35,6 +34,7 @@
                             <button id="apply" class="apply_btn">Add</button>
                         </div>
                     </div>
+
                     <div class="tabs">
                         <div class="pack-dropdown">
                             <button class="pack-btn">Pack ▼</button>
@@ -46,26 +46,23 @@
                         <button id="allTab" class="tab active">All</button>
                         <button id="favoritesTab" class="tab">Favorites</button>
                     </div>
+
                     <div class="grid-control">
                         <span>Grid:</span>
                         <button class="grid-btn" data-cols="1">1x</button>
-                        <button class="grid-btn" data-cols="2" class="active">2x</button>
+                        <button class="grid-btn active" data-cols="2">2x</button>
                         <button class="grid-btn" data-cols="3">3x</button>
                     </div>
                 </header>
 
-                <div class="presets" id="presetList">
-                    <!-- Presetlar avtomatik ravishda JS orqali yuklanadi -->
-                </div>
+                <div class="presets" id="presetList"></div>
+
                 <div class="pagination">
-                    <button id="prevPage" disabled>
-                        <span class="material-icons">❮</span>
-                    </button>
+                    <button id="prevPage" disabled><span>❮</span></button>
                     <span id="pageInfo">Page 1 of 3</span>
-                    <button id="nextPage">
-                        <span class="material-icons">❯</span>
-                    </button>
+                    <button id="nextPage"><span>❯</span></button>
                 </div>
+
                 <div class="status" id="status">No items selected</div>
                 <div class="footer-credit">Owner: <span>@darken_ae</span></div>
             </div>
