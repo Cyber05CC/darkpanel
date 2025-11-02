@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<ExtensionManifest Version="9.0" ExtensionBundleId="com.darkpanel" ExtensionBundleVersion="1.3">
+<ExtensionManifest Version="9.0" ExtensionBundleId="com.darkpanel" ExtensionBundleVersion="1.5">
   <ExtensionList>
     <Extension Id="com.darkpanel.panel" Version="1.2"/>
   </ExtensionList>

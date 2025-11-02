@@ -1,12 +1,12 @@
 {
-    "version": "1.3",
+    "version": "1.5",
     "files": {
         "index.html": {
             "hash": "6d83f85ff8fdcca642db79eb91f85276",
             "url": "https://darkpanel-coral.vercel.app/index.html"
         },
         "css/style.css": {
-            "hash": "0",
+            "hash": "21e56ae111951b2480b58b868be583d6",
             "url": "https://darkpanel-coral.vercel.app/css/style.css"
         },
         "js/main.js": {
