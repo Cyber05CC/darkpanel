@@ -4,8 +4,8 @@ document.addEventListener('DOMContentLoaded', function () {
     // ----------------------- UPDATE CONFIG -----------------------
     const REMOTE_BASE = 'https://darkpanel-coral.vercel.app';
     const UPDATE_URL = REMOTE_BASE + '/update.json';
-    const BUNDLE_VERSION = '1.3'; // CSXS/manifest.xml dagisi bilan mos
-    const LS_INSTALLED = 'darkpanel_installed_version'; // localStorage kalit
+    const BUNDLE_VERSION = '1.3';
+    const LS_INSTALLED = 'darkpanel_installed_version';
     const SUPPORTED_TEXT_FILES = ['index.html', 'css/style.css', 'js/main.js', 'CSXS/manifest.xml'];
     // -------------------------------------------------------------
 
@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // ----------------------- BOOT -----------------------
     init();
-    safeCheckForUpdates(); // sahifa ochilganda tekshir
+    safeCheckForUpdates();
     // ---------------------------------------------------
 
     // ===================== UPDATE SYSTEM =====================
@@ -42,10 +42,8 @@ document.addEventListener('DOMContentLoaded', function () {
             const res = await fetch(UPDATE_URL + '?t=' + Date.now());
             if (!res.ok) throw new Error('update.json not found');
             const remote = await res.json();
-
             const installed = localStorage.getItem(LS_INSTALLED) || BUNDLE_VERSION;
 
-            // Agar remote versiya KATTA bo'lsa (yoki boshqa) — prompt chiqsin
             if (remote?.version && remote.version !== installed) {
                 showUpdatePopup(remote.version, remote.files);
             } else {
@@ -73,52 +71,55 @@ document.addEventListener('DOMContentLoaded', function () {
         `;
         document.body.appendChild(popup);
 
-        document.getElementById('updateLater').addEventListener('click', () => {
-            popup.remove();
-        });
+        document.getElementById('updateLater').addEventListener('click', () => popup.remove());
 
         document.getElementById('updateNow').addEventListener('click', async () => {
-            setUpdateStatus('⏳ Downloading & applying…');
+            setStatus('⏳ Downloading & applying…');
             try {
-                // 1) Avval extension papkaga yozishga urinib ko'ramiz
                 const ok = await tryWriteToExtension(files);
                 if (ok) {
-                    // muvaffaqiyat — versiyani saqlaymiz, va qayta yuklaymiz
                     localStorage.setItem(LS_INSTALLED, version);
-                    setUpdateStatus('✅ Update complete. Reloading…');
-                    setTimeout(() => location.reload(), 900);
+                    setStatus('✅ Update complete. Reloading…');
+                    setTimeout(() => location.reload(), 1000);
                     return;
                 }
 
-                // 2) Agar yozish ruxsati bo'lmasa — remote overlay rejimi
                 await applyRemoteOverlay(files);
                 localStorage.setItem(LS_INSTALLED, version);
-                setUpdateStatus('✅ Update applied (overlay). Please restart AE.');
+                setStatus('✅ Update applied (overlay). Restart AE to fully apply.');
             } catch (err) {
                 console.error(err);
-                setUpdateStatus('❌ Update failed: ' + err.message);
+                setStatus('❌ Update failed: ' + err.message);
             }
         });
 
-        function setUpdateStatus(msg) {
+        function setStatus(msg) {
             popup.querySelector('.alert-message').textContent = msg;
         }
     }
 
     async function tryWriteToExtension(files) {
-        // Faqat matnli fayllarni yozamiz (bizning ro'yxat)
-        // muvaffaqiyat bo'lsa true qaytadi
         const extRoot = csInterface.getSystemPath(SystemPath.EXTENSION);
 
+        // JSON.stringify qilingan textni JSX uchun xavfsiz qiladi
+        function escapeJSX(text) {
+            return text
+                .replace(/\\/g, '\\\\')
+                .replace(/'/g, "\\'")
+                .replace(/"/g, '\\"')
+                .replace(/\r/g, '\\r')
+                .replace(/\n/g, '\\n');
+        }
+
         const ensureFoldersScript = (fullPath) => `
-            (function() {
-                function ensureFolder(path) {
+            (function(){
+                function ensureFolder(path){
                     var parts = path.split(/[\\\\/]/);
-                    var acc = parts.shift(); // c: yoki birinchi bo'lak
-                    while (parts.length) {
+                    var acc = parts.shift();
+                    while(parts.length){
                         acc += "/" + parts.shift();
                         var f = new Folder(acc);
-                        if (!f.exists) { try { f.create(); } catch(e) { return "ERR:" + e; } }
+                        if(!f.exists){ try{ f.create(); }catch(e){ return "ERR:"+e; } }
                     }
                     return "OK";
                 }
@@ -127,15 +128,14 @@ document.addEventListener('DOMContentLoaded', function () {
         `;
 
         for (const [rel, info] of Object.entries(files || {})) {
-            if (!SUPPORTED_TEXT_FILES.includes(rel)) continue; // faqat shu fayllar
+            if (!SUPPORTED_TEXT_FILES.includes(rel)) continue;
             const url = info.url + '?t=' + Date.now();
-
             const text = await (await fetch(url)).text();
+            const safeText = escapeJSX(text);
 
-            // papkani yaratish (agar mavjud bo'lmasa)
             const dir = rel.split('/').slice(0, -1).join('/');
             if (dir) {
-                const targetDir = extRoot + '/' + dir;
+                const targetDir = `${extRoot}/${dir}`;
                 const ok = await new Promise((resolve) => {
                     csInterface.evalScript(ensureFoldersScript(targetDir), (res) =>
                         resolve(res === 'OK')
@@ -144,31 +144,29 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (!ok) return false;
             }
 
-            // Faylni yozish
             const targetFile = `${extRoot}/${rel}`;
             const writeScript = `
-                (function() {
-                    try {
+                (function(){
+                    try{
                         var f = new File("${targetFile.replace(/"/g, '\\"')}");
                         f.encoding = "UTF-8";
                         f.open("w");
-                        f.write(${JSON.stringify(text)});
+                        f.write("${safeText}");
                         f.close();
                         return "OK";
-                    } catch(e) { return "ERR:" + e; }
+                    }catch(e){ return "ERR:"+e.toString(); }
                 })();
             `;
             const wrote = await new Promise((resolve) => {
                 csInterface.evalScript(writeScript, (res) => resolve(res === 'OK'));
             });
-            if (!wrote) return false; // bitta ham yozilmasa — demak ruxsat yo‘q
+            if (!wrote) return false;
         }
         return true;
     }
 
     async function applyRemoteOverlay(files) {
-        // Yozish bo'lmasa: CSS/HTML’ni serverdan yuklab ichida qo‘llaymiz
-        // 1) CSS’ni hot-swap
+        // CSS yangilanishi
         if (files['css/style.css']) {
             const id = 'overlay-style';
             let link = document.getElementById(id);
@@ -181,20 +179,30 @@ document.addEventListener('DOMContentLoaded', function () {
             link.href = files['css/style.css'].url + '?t=' + Date.now();
         }
 
-        // 2) index.html ichidagi <main>ni yangilash (agar bor bo'lsa)
+        // HTML (UI) yangilanishi — endi to‘liq sahifani hot-reload qiladi
         if (files['index.html']) {
             try {
                 const html = await (
                     await fetch(files['index.html'].url + '?t=' + Date.now())
                 ).text();
-                // faqat <main> kontentini almashtiramiz
-                const tmp = document.createElement('div');
-                tmp.innerHTML = html;
-                const newMain = tmp.querySelector('main');
+                const parser = new DOMParser();
+                const newDoc = parser.parseFromString(html, 'text/html');
+
+                const newMain = newDoc.querySelector('main');
                 const curMain = document.querySelector('main');
-                if (newMain && curMain) curMain.innerHTML = newMain.innerHTML;
+                if (newMain && curMain) {
+                    curMain.innerHTML = newMain.innerHTML;
+                    console.log('✅ UI updated (overlay)');
+                }
+
+                // yangi JS-ni ham hot-reload
+                if (files['js/main.js']) {
+                    const script = document.createElement('script');
+                    script.src = files['js/main.js'].url + '?t=' + Date.now();
+                    document.body.appendChild(script);
+                }
             } catch (e) {
-                console.log('Overlay HTML swap skipped:', e);
+                console.warn('Overlay HTML swap skipped:', e);
             }
         }
     }
@@ -363,17 +371,6 @@ document.addEventListener('DOMContentLoaded', function () {
             presetsContainer.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
             presetsContainer.dataset.cols = cols;
         }
-
-        window.addEventListener('resize', () => {
-            if (window.innerWidth <= 420) {
-                presetsContainer.style.gridTemplateColumns = 'repeat(1, 1fr)';
-            } else if (window.innerWidth <= 640) {
-                presetsContainer.style.gridTemplateColumns = 'repeat(2, 1fr)';
-            } else {
-                const cols = parseInt(localStorage.getItem('gridCols')) || 2;
-                presetsContainer.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-            }
-        });
     }
 
     function switchPack(packType) {
@@ -504,5 +501,4 @@ document.addEventListener('DOMContentLoaded', function () {
             document.querySelector('.pack-dropdown-content')?.classList.remove('show')
         );
     }
-    // -------------------- END UI LOGIKA --------------------
 });
