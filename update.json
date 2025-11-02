@@ -3,11 +3,11 @@
     "files": {
         "js/main.js": {
             "hash": "abc123",
-            "url": "https://darkpanel-coral.vercel.app/files/js/main.js"
+            "url": "https://darkpanel-coral.vercel.app/js/main.js"
         },
         "css/style.css": {
             "hash": "def456",
-            "url": "https://darkpanel-coral.vercel.app/files/css/style.css"
+            "url": "https://darkpanel-coral.vercel.app/css/style.css"
         }
     }
 }
