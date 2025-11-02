@@ -61,16 +61,16 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         window.addEventListener('offline', () => {
-            showConnectionAlert('Siz hozir oflayndasiz! Internetni tekshiring.', 'error');
+            showConnectionAlert('Problem connecting to the Internet.', 'error');
         });
 
         window.addEventListener('online', () => {
-            showConnectionAlert('Internet tiklandi! Sahifa qayta yuklanmoqda...', 'success');
+            showConnectionAlert('Connecting', 'success');
             setTimeout(() => location.reload(), 1500);
         });
 
         if (!navigator.onLine) {
-            showConnectionAlert('Siz hozir oflayndasiz! Internetni tekshiring.', 'error');
+            showConnectionAlert('Problem connecting to the Internet.', 'error');
         }
     }
     // =============================================================
