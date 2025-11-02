@@ -1,21 +1,17 @@
 {
-    "version": "1.2",
+    "version": "1.3",
     "files": {
         "index.html": {
-            "hash": "6d83f85ff8fdcca642db79eb91f85276",
-            "url": "https://darkpanel-coral.vercel.app/index.html"
+            "url": "https://raw.githubusercontent.com/Cyber05CC/darkpanel/main/index.html"
         },
         "css/style.css": {
-            "hash": "21e56ae111951b2480b58b868be583d6",
-            "url": "https://darkpanel-coral.vercel.app/css/style.css"
+            "url": "https://raw.githubusercontent.com/Cyber05CC/darkpanel/main/css/style.css"
         },
         "js/main.js": {
-            "hash": "78d1f6418eeac627f91aa8666fb44bdb",
-            "url": "https://darkpanel-coral.vercel.app/js/main.js"
+            "url": "https://raw.githubusercontent.com/Cyber05CC/darkpanel/main/js/main.js"
         },
         "CSXS/manifest.xml": {
-            "hash": "5c399f545e1057c685091efb83b2821a",
-            "url": "https://darkpanel-coral.vercel.app/CSXS/manifest.xml"
+            "url": "https://raw.githubusercontent.com/Cyber05CC/darkpanel/main/CSXS/manifest.xml"
         }
     }
 }

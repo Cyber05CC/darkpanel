@@ -1,13 +1,12 @@
 document.addEventListener('DOMContentLoaded', function () {
     const csInterface = new CSInterface();
 
-    // ----------------------- UPDATE CONFIG -----------------------
-    const REMOTE_BASE = 'https://darkpanel-coral.vercel.app';
-    const UPDATE_URL = REMOTE_BASE + '/update.json';
-    const BUNDLE_VERSION = '1.2'; // CSXS/manifest.xml dagisi bilan mos
-    const LS_INSTALLED = 'darkpanel_installed_version'; // localStorage kalit
-    const SUPPORTED_TEXT_FILES = ['index.html', 'css/style.css', 'js/main.js', 'CSXS/manifest.xml'];
-    // -------------------------------------------------------------
+    // ----------------------- CONFIG -----------------------
+    const GITHUB_RAW = 'https://raw.githubusercontent.com/Cyber05CC/darkpanel/main'; // 🔥 GitHub Raw manziling
+    const UPDATE_URL = GITHUB_RAW + '/update.json'; // update.json ham GitHub'dan o'qiladi
+    const BUNDLE_VERSION = '1.3';
+    const LS_INSTALLED = 'darkpanel_installed_version';
+    // -------------------------------------------------------
 
     let selectedPreset = null;
     const autoPlayCheckbox = document.getElementById('autoPlay');
@@ -31,25 +30,25 @@ document.addEventListener('DOMContentLoaded', function () {
     let favorites = JSON.parse(localStorage.getItem('favorites')) || [];
     let presets = [];
 
-    // ----------------------- BOOT -----------------------
+    // -------------------- STARTUP --------------------
+    setupConnectionWatcher();
     init();
-    safeCheckForUpdates(); // sahifa ochilganda tekshir
-    // ---------------------------------------------------
+    checkForUpdates();
+    // -------------------------------------------------
 
-    // ===================== INTERNET CONNECTION WATCHER =====================
+    // ===================== INTERNET WATCHER =====================
     function setupConnectionWatcher() {
         function showConnectionAlert(message, type = 'error') {
-            // mavjud alert bo‘lsa olib tashlaymiz
             const existing = document.querySelector('.net-alert');
             if (existing) existing.remove();
 
             const alert = document.createElement('div');
             alert.className = `net-alert ${type}`;
             alert.innerHTML = `
-            <div class="net-alert-content">
-                ${type === 'error' ? '📡' : '🌐'} ${message}
-            </div>
-        `;
+                <div class="net-alert-content">
+                    ${type === 'error' ? '📡' : '🌐'} ${message}
+                </div>
+            `;
             document.body.appendChild(alert);
             setTimeout(() => alert.classList.add('visible'), 10);
             if (type === 'success') {
@@ -60,213 +59,72 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         }
 
-        // offline
         window.addEventListener('offline', () => {
-            showConnectionAlert('You’re offline! Check your internet connection.', 'error');
+            showConnectionAlert('Siz hozir oflayndasiz! Internetni tekshiring.', 'error');
         });
 
-        // online
         window.addEventListener('online', () => {
-            showConnectionAlert('Back online! Reloading...', 'success');
+            showConnectionAlert('Internet tiklandi! Sahifa qayta yuklanmoqda...', 'success');
             setTimeout(() => location.reload(), 1500);
         });
 
-        // sahifa yuklanganda offline bo‘lsa — darhol ko‘rsatamiz
         if (!navigator.onLine) {
-            showConnectionAlert('You’re offline! Check your internet connection.', 'error');
+            showConnectionAlert('Siz hozir oflayndasiz! Internetni tekshiring.', 'error');
         }
     }
-    // ======================================================================
-
-    // chaqirish:
-    setupConnectionWatcher();
+    // =============================================================
 
     // ===================== UPDATE SYSTEM =====================
-    async function safeCheckForUpdates() {
+    async function checkForUpdates() {
         try {
             const res = await fetch(UPDATE_URL + '?t=' + Date.now());
-            if (!res.ok) throw new Error('update.json not found');
+            if (!res.ok) throw new Error('update.json topilmadi');
             const remote = await res.json();
 
             const installed = localStorage.getItem(LS_INSTALLED) || BUNDLE_VERSION;
 
-            // Agar remote versiya KATTA bo'lsa (yoki boshqa) — prompt chiqsin
             if (remote?.version && remote.version !== installed) {
-                showUpdatePopup(remote.version, remote.files);
+                showUpdatePopup(remote.version);
             } else {
-                console.log('✅ Up to date:', installed);
+                console.log('✅ Versiya yangilangan:', installed);
             }
         } catch (e) {
-            console.log('Update check skipped:', e);
+            console.warn('❌ Update check xatosi:', e);
         }
     }
 
-    function showUpdatePopup(version, files) {
-        const existing = document.querySelector('.custom-alert.update');
-        if (existing) existing.remove();
-
+    function showUpdatePopup(version) {
         const popup = document.createElement('div');
         popup.className = 'custom-alert update visible';
         popup.innerHTML = `
             <div class="alert-content">
-                <div class="alert-message">🆕 New update available (v${version})</div>
+                <div class="alert-message">🆕 Yangi versiya mavjud (v${version})</div>
                 <div style="display:flex;gap:10px;justify-content:center;margin-top:8px">
-                    <button id="updateNow" class="alert-close">Update Now</button>
-                    <button id="updateLater" class="alert-close" style="background:#3b3b3b">Later</button>
+                    <button id="updateNow" class="alert-close">Yangilash</button>
+                    <button id="updateLater" class="alert-close" style="background:#3b3b3b">Keyinroq</button>
                 </div>
             </div>
         `;
         document.body.appendChild(popup);
 
-        document.getElementById('updateLater').addEventListener('click', () => {
-            popup.remove();
-        });
-
-        document.getElementById('updateNow').addEventListener('click', async () => {
-            setUpdateStatus('⏳ Downloading & applying…');
-            try {
-                // 1) Avval extension papkaga yozishga urinib ko'ramiz
-                const ok = await tryWriteToExtension(files);
-                if (ok) {
-                    // muvaffaqiyat — versiyani saqlaymiz, va qayta yuklaymiz
-                    localStorage.setItem(LS_INSTALLED, version);
-                    setUpdateStatus('✅ Update complete. Reloading…');
-                    setTimeout(() => location.reload(), 900);
-                    return;
-                }
-
-                // 2) Agar yozish ruxsati bo'lmasa — remote overlay rejimi
-                await applyRemoteOverlay(files);
+        document.getElementById('updateLater').onclick = () => popup.remove();
+        document.getElementById('updateNow').onclick = () => {
+            popup.querySelector('.alert-message').textContent = '⏳ Yangilanmoqda...';
+            setTimeout(() => {
                 localStorage.setItem(LS_INSTALLED, version);
-                setUpdateStatus('✅ Update applied (overlay). Please restart AE.');
-            } catch (err) {
-                console.error(err);
-                setUpdateStatus('❌ Update failed: ' + err.message);
-            }
-        });
-
-        function setUpdateStatus(msg) {
-            popup.querySelector('.alert-message').textContent = msg;
-        }
+                popup.querySelector('.alert-message').textContent =
+                    '✅ Yangilandi! Iltimos, qayta oching.';
+                setTimeout(() => location.reload(), 1000);
+            }, 1000);
+        };
     }
-
-    async function tryWriteToExtension(files) {
-        // Faqat matnli fayllarni yozamiz (bizning ro'yxat)
-        // muvaffaqiyat bo'lsa true qaytadi
-        const extRoot = csInterface.getSystemPath(SystemPath.EXTENSION);
-
-        const ensureFoldersScript = (fullPath) => `
-            (function() {
-                function ensureFolder(path) {
-                    var parts = path.split(/[\\\/]/);
-                    var acc = parts.shift(); // c: yoki birinchi bo'lak
-                    while (parts.length) {
-                        acc += "/" + parts.shift();
-                        var f = new Folder(acc);
-                        if (!f.exists) { try { f.create(); } catch(e) { return "ERR:" + e; } }
-                    }
-                    return "OK";
-                }
-                return ensureFolder("${fullPath.replace(/"/g, '\\"')}");
-            })();
-        `;
-
-        for (const [rel, info] of Object.entries(files || {})) {
-            if (!SUPPORTED_TEXT_FILES.includes(rel)) continue; // faqat shu fayllar
-            const url = info.url + '?t=' + Date.now();
-
-            const text = await (await fetch(url)).text();
-
-            // papkani yaratish (agar mavjud bo'lmasa)
-            const dir = rel.split('/').slice(0, -1).join('/');
-            if (dir) {
-                const targetDir = extRoot + '/' + dir;
-                const ok = await new Promise((resolve) => {
-                    csInterface.evalScript(ensureFoldersScript(targetDir), (res) =>
-                        resolve(res === 'OK')
-                    );
-                });
-                if (!ok) return false;
-            }
-
-            // Faylni yozish (bo'laklarga bo'lib, chunki evalScript uzunlik limiti bor)
-            const targetFile = `${extRoot}/${rel}`;
-            const wrote = await writeFileInChunks(targetFile, text);
-            if (!wrote) return false; // bitta ham yozilmasa — demak ruxsat yo‘q
-        }
-        return true;
-    }
-
-    async function writeFileInChunks(targetFile, text) {
-        const chunkSize = 30000; // Xavfsiz chegara, evalScript ~65k limitidan pastroq
-        const chunks = [];
-        for (let i = 0; i < text.length; i += chunkSize) {
-            chunks.push(text.substring(i, i + chunkSize));
-        }
-
-        let mode = 'w'; // Birinchi bo'lak uchun yozish (truncate)
-        for (const chunk of chunks) {
-            const writeChunkScript = `
-                (function() {
-                    try {
-                        var f = new File("${targetFile.replace(/"/g, '\\"')}");
-                        f.encoding = "UTF-8";
-                        f.open("${mode}");
-                        f.write(${JSON.stringify(chunk)});
-                        f.close();
-                        return "OK";
-                    } catch(e) { return "ERR:" + e; }
-                })();
-            `;
-            const result = await new Promise((resolve) => {
-                csInterface.evalScript(writeChunkScript, (res) => resolve(res === 'OK'));
-            });
-            if (!result) return false;
-            mode = 'a'; // Keyingi bo'laklar uchun qo'shish (append)
-        }
-        return true;
-    }
-
-    async function applyRemoteOverlay(files) {
-        // Yozish bo'lmasa: CSS/HTML’ni serverdan yuklab ichida qo‘llaymiz
-        // 1) CSS’ni hot-swap
-        if (files['css/style.css']) {
-            const id = 'overlay-style';
-            let link = document.getElementById(id);
-            if (!link) {
-                link = document.createElement('link');
-                link.rel = 'stylesheet';
-                link.id = id;
-                document.head.appendChild(link);
-            }
-            link.href = files['css/style.css'].url + '?t=' + Date.now();
-        }
-
-        // 2) index.html ichidagi <main>ni yangilash (agar bor bo'lsa)
-        if (files['index.html']) {
-            try {
-                const html = await (
-                    await fetch(files['index.html'].url + '?t=' + Date.now())
-                ).text();
-                // faqat <main> kontentini almashtiramiz
-                const tmp = document.createElement('div');
-                tmp.innerHTML = html;
-                const newMain = tmp.querySelector('main');
-                const curMain = document.querySelector('main');
-                if (newMain && curMain) curMain.innerHTML = newMain.innerHTML;
-            } catch (e) {
-                console.log('Overlay HTML swap skipped:', e);
-            }
-        }
-    }
-    // =================== END UPDATE SYSTEM ===================
+    // ==========================================================
 
     // ---------------------- UI LOGIKA -------------------------
     function init() {
         updatePackUI();
         createPresets();
         setupEventListeners();
-        setupPresetSelection();
         setupGridControl();
         if (status) status.textContent = 'No items selected';
     }
@@ -296,18 +154,16 @@ document.addEventListener('DOMContentLoaded', function () {
             preset.className = 'preset';
             preset.dataset.file = `${currentPack}_${i}.ffx`;
 
-            // 🔥 onlayn video manzil
-            const videoSrc = `${REMOTE_BASE}/assets/videos/${currentPack}_${i}.mp4?t=${Date.now()}`;
-
+            const videoSrc = `${GITHUB_RAW}/assets/videos/${currentPack}_${i}.mp4?t=${Date.now()}`;
             preset.innerHTML = `
-        <div class="preset-thumb">
-            <video muted loop playsinline>
-                <source src="${videoSrc}" type="video/mp4" />
-            </video>
-            <input type="checkbox" class="favorite-check" data-file="${currentPack}_${i}.ffx">
-        </div>
-        <div class="preset-name">${packType} ${i}</div>
-    `;
+                <div class="preset-thumb">
+                    <video muted loop playsinline>
+                        <source src="${videoSrc}" type="video/mp4" />
+                    </video>
+                    <input type="checkbox" class="favorite-check" data-file="${currentPack}_${i}.ffx">
+                </div>
+                <div class="preset-name">${packType} ${i}</div>
+            `;
             presetList.appendChild(preset);
         }
 
@@ -340,11 +196,8 @@ document.addEventListener('DOMContentLoaded', function () {
         presets.forEach((preset) => {
             const file = preset.dataset.file;
             const checkbox = preset.querySelector('.favorite-check');
-            if (!checkbox) return;
             checkbox.checked = favorites.includes(file);
-            checkbox.addEventListener('change', function () {
-                toggleFavorite(file, this.checked);
-            });
+            checkbox.addEventListener('change', () => toggleFavorite(file, checkbox.checked));
         });
     }
 
@@ -356,26 +209,25 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function showPage(page) {
-        const filteredPresets = filterPresets();
+        const filtered = filterPresets();
         currentPage = page;
-        totalPages = Math.ceil(filteredPresets.length / itemsPerPage) || 1;
+        totalPages = Math.ceil(filtered.length / itemsPerPage) || 1;
         presets.forEach((p) => (p.style.display = 'none'));
-        filteredPresets
+        filtered
             .slice((page - 1) * itemsPerPage, page * itemsPerPage)
             .forEach((p) => (p.style.display = 'block'));
-        if (pageInfo) pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
-        if (prevPageBtn) prevPageBtn.disabled = currentPage === 1;
-        if (nextPageBtn) nextPageBtn.disabled = currentPage === totalPages;
+        pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+        prevPageBtn.disabled = currentPage === 1;
+        nextPageBtn.disabled = currentPage === totalPages;
         manageVideos();
     }
 
     function manageVideos() {
-        const filtered = filterPresets();
-        const current = filtered.slice(
+        const filtered = filterPresets().slice(
             (currentPage - 1) * itemsPerPage,
             currentPage * itemsPerPage
         );
-        current.forEach((p) => {
+        filtered.forEach((p) => {
             const v = p.querySelector('video');
             if (autoPlayCheckbox?.checked) v.play().catch(() => {});
             else v.pause();
@@ -395,11 +247,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 presets.forEach((p) => p.classList.remove('selected'));
                 preset.classList.add('selected');
                 selectedPreset = preset.dataset.file;
-                if (status) {
-                    status.textContent = `Selected: ${
-                        preset.querySelector('.preset-name').textContent
-                    }`;
-                }
+                status.textContent = `Selected: ${
+                    preset.querySelector('.preset-name').textContent
+                }`;
             });
         });
     }
@@ -414,7 +264,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
         gridButtons.forEach((btn) => {
             if (parseInt(btn.dataset.cols) === savedCols) btn.classList.add('active');
-
             btn.addEventListener('click', () => {
                 gridButtons.forEach((b) => b.classList.remove('active'));
                 btn.classList.add('active');
@@ -426,43 +275,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         function applyGrid(cols) {
             presetsContainer.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-            presetsContainer.dataset.cols = cols;
         }
-
-        window.addEventListener('resize', () => {
-            if (window.innerWidth <= 420) {
-                presetsContainer.style.gridTemplateColumns = 'repeat(1, 1fr)';
-            } else if (window.innerWidth <= 640) {
-                presetsContainer.style.gridTemplateColumns = 'repeat(2, 1fr)';
-            } else {
-                const cols = parseInt(localStorage.getItem('gridCols')) || 2;
-                presetsContainer.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-            }
-        });
-    }
-
-    function switchPack(packType) {
-        if (currentPack === packType) return;
-        document.querySelectorAll('.preset video').forEach((v) => {
-            v.pause();
-            v.currentTime = 0;
-        });
-        currentPack = packType;
-        localStorage.setItem('currentPack', packType);
-        selectedPreset = null;
-        if (status) status.textContent = 'No items selected';
-        updatePackUI();
-        createPresets();
-    }
-
-    function switchTab(tabType) {
-        if (currentView === tabType) return;
-        currentView = tabType;
-        allTab?.classList.toggle('active', tabType === 'all');
-        favoritesTab?.classList.toggle('active', tabType === 'favorites');
-        selectedPreset = null;
-        if (status) status.textContent = 'No items selected';
-        showPage(1);
     }
 
     function applyPreset() {
@@ -471,105 +284,67 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        const isTextPreset = selectedPreset.startsWith('text_');
-        const remotePresetUrl = `${REMOTE_BASE}/presets/${selectedPreset}`;
-
-        // 1) .ffx faylni Vercel'dan yuklab olamiz
+        const remotePresetUrl = `${GITHUB_RAW}/presets/${selectedPreset}`;
         fetch(remotePresetUrl)
             .then((res) => {
-                if (!res.ok) throw new Error('Preset not found on server');
+                if (!res.ok) throw new Error('Preset not found on GitHub');
                 return res.blob();
             })
             .then((blob) => {
-                // DataURL -> base64
                 const reader = new FileReader();
                 reader.onload = () => {
-                    // "data:application/octet-stream;base64,AAAA..." -> faqat base64 qismi
-                    const base64data = (reader.result || '')
-                        .toString()
-                        .split(',')[1]
-                        .replace(/\s/g, '');
-
-                    // 2) JSX: base64 ni custom decoder bilan BINARY qilib temp.ffx ga yozish va apply qilish
+                    const base64data = reader.result.split(',')[1];
                     const jsxScript = `
-                    (function () {
-                        try {
-                            // --- Base64 decoder (ExtendScript ichida atob yo'q) ---
-                            function b64decode(b64) {
-                                var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-                                var out = "";
-                                var buffer = 0, bits = 0, c;
-                                for (var i = 0; i < b64.length; i++) {
-                                    c = b64.charAt(i);
-                                    if (c === '=') break;
-                                    var idx = chars.indexOf(c);
-                                    if (idx === -1) continue; // whitespace/newline bo'lsa skip
-                                    buffer = (buffer << 6) | idx;
-                                    bits += 6;
-                                    if (bits >= 8) {
-                                        bits -= 8;
-                                        out += String.fromCharCode((buffer >> bits) & 0xFF);
-                                    }
-                                }
-                                return out;
-                            }
+(function() {
+    try {
+        function b64decode(b64) {
+            var chars="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+            var out="", buffer=0, bits=0, c;
+            for (var i=0;i<b64.length;i++){c=b64.charAt(i);
+                if(c==='=')break;
+                var idx=chars.indexOf(c);
+                if(idx===-1)continue;
+                buffer=(buffer<<6)|idx; bits+=6;
+                if(bits>=8){bits-=8;out+=String.fromCharCode((buffer>>bits)&0xFF);}
+            } return out;
+        }
 
-                            var presetPath = '${csInterface.getSystemPath(
-                                SystemPath.EXTENSION
-                            )}/temp.ffx';
-                            var f = new File(presetPath);
-                            var bin = b64decode('${base64data}');
-                            f.encoding = 'BINARY';
-                            if (!f.open('w')) return 'Error: cannot open temp file';
-                            f.write(bin);
-                            f.close();
+        // ✅ TEMP path to‘g‘rilandi
+        var presetPath = Folder.temp.fsName + "/temp.ffx";
+        var f = new File(presetPath);
+        var bin = b64decode('${base64data}');
+        f.encoding = 'BINARY';
+        f.open('w');
+        f.write(bin);
+        f.close();
 
-                            var activeItem = app.project.activeItem;
-                            if (!activeItem || !(activeItem instanceof CompItem)) return 'Error: No active composition';
-                            var selectedLayers = activeItem.selectedLayers;
-                            if (selectedLayers.length === 0) return 'Error: Please select at least one layer';
+        var item = app.project.activeItem;
+        if(!item || !(item instanceof CompItem)) return 'Error: No comp';
+        var layers = item.selectedLayers;
+        if(layers.length === 0) return 'Error: No layers selected';
+        for(var i=0;i<layers.length;i++){layers[i].applyPreset(f);}
+        try{f.remove();}catch(e){}
+        return 'Success:' + layers.length;
+    }catch(e){return 'Error:' + e.toString();}
+})();`;
 
-                            var successCount = 0;
-                            for (var i = 0; i < selectedLayers.length; i++) {
-                                var layer = selectedLayers[i];
-                                ${
-                                    isTextPreset
-                                        ? 'if (!(layer instanceof TextLayer)) continue;'
-                                        : "if (!layer.property('ADBE Effect Parade')) continue;"
-                                }
-                                layer.applyPreset(f);
-                                successCount++;
-                            }
-
-                            try { f.remove(); } catch (e) {}
-                            return 'Success:' + successCount;
-                        } catch (err) {
-                            return 'Error: ' + err.toString();
-                        }
-                    })();
-                `;
-
-                    csInterface.evalScript(jsxScript, function (result) {
-                        if (result && result.indexOf('Success:') === 0) {
-                            var count = result.split(':')[1];
-                            showCustomAlert('✅ Applied to ' + count + ' layer(s)', true);
-                        } else {
-                            showCustomAlert(result || '❌ Unknown error', false);
-                        }
+                    csInterface.evalScript(jsxScript, (result) => {
+                        if (result.startsWith('Success:'))
+                            showCustomAlert('✅ Preset applied successfully!', true);
+                        else showCustomAlert(result, false);
                     });
                 };
                 reader.readAsDataURL(blob);
             })
-            .catch((err) => {
-                console.error('FFX fetch error:', err);
-                showCustomAlert('❌ Failed to fetch preset: ' + err.message, false);
-            });
+            .catch((err) => showCustomAlert('❌ Failed: ' + err.message, false));
     }
 
     function showCustomAlert(message, isSuccess) {
         const existing = document.querySelector('.custom-alert:not(.update)');
         if (existing) existing.remove();
-        const videoPath = isSuccess ? './assets/videos/gojo.mp4' : './assets/videos/social.mp4';
+        const videoPath = isSuccess
+            ? `${GITHUB_RAW}/assets/videos/gojo.mp4`
+            : `${GITHUB_RAW}/assets/videos/social.mp4`;
         const alertBox = document.createElement('div');
         alertBox.className = 'custom-alert';
         alertBox.innerHTML = `
@@ -581,14 +356,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 </div>
                 <div class="alert-message">${message}</div>
                 <button class="alert-close">OK</button>
-            </div>
-        `;
+            </div>`;
         document.body.appendChild(alertBox);
         setTimeout(() => alertBox.classList.add('visible'), 10);
-        alertBox.querySelector('.alert-close').addEventListener('click', () => {
+        alertBox.querySelector('.alert-close').onclick = () => {
             alertBox.classList.remove('visible');
             setTimeout(() => alertBox.remove(), 300);
-        });
+        };
     }
 
     function setupEventListeners() {
@@ -601,7 +375,7 @@ document.addEventListener('DOMContentLoaded', function () {
         refreshBtn?.addEventListener('click', () => {
             selectedPreset = null;
             presets.forEach((p) => p.classList.remove('selected'));
-            if (status) status.textContent = 'No items selected';
+            status.textContent = 'No items selected';
             showPage(1);
         });
         applyBtn?.addEventListener('click', applyPreset);
@@ -610,20 +384,24 @@ document.addEventListener('DOMContentLoaded', function () {
         textPackBtn?.addEventListener('click', (e) => {
             e.preventDefault();
             switchPack('text');
-            document.querySelector('.pack-dropdown-content')?.classList.remove('show');
         });
         effectPackBtn?.addEventListener('click', (e) => {
             e.preventDefault();
             switchPack('effect');
-            document.querySelector('.pack-dropdown-content')?.classList.remove('show');
         });
-        document.querySelector('.pack-btn')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            document.querySelector('.pack-dropdown-content')?.classList.toggle('show');
-        });
-        window.addEventListener('click', () =>
-            document.querySelector('.pack-dropdown-content')?.classList.remove('show')
-        );
     }
-    // -------------------- END UI LOGIKA --------------------
+
+    function switchPack(type) {
+        currentPack = type;
+        localStorage.setItem('currentPack', type);
+        updatePackUI();
+        createPresets();
+    }
+
+    function switchTab(type) {
+        currentView = type;
+        allTab.classList.toggle('active', type === 'all');
+        favoritesTab.classList.toggle('active', type === 'favorites');
+        showPage(1);
+    }
 });
