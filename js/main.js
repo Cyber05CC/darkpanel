@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // ----------------------- UPDATE CONFIG -----------------------
     const REMOTE_BASE = 'https://darkpanel-coral.vercel.app';
     const UPDATE_URL = REMOTE_BASE + '/update.json';
-    const BUNDLE_VERSION = '1.5'; // CSXS/manifest.xml dagisi bilan mos
+    const BUNDLE_VERSION = '1.6'; // CSXS/manifest.xml dagisi bilan mos
     const LS_INSTALLED = 'darkpanel_installed_version'; // localStorage kalit
     const SUPPORTED_TEXT_FILES = ['index.html', 'css/style.css', 'js/main.js', 'CSXS/manifest.xml'];
     // -------------------------------------------------------------
@@ -250,15 +250,19 @@ document.addEventListener('DOMContentLoaded', function () {
             const preset = document.createElement('div');
             preset.className = 'preset';
             preset.dataset.file = `${currentPack}_${i}.ffx`;
+
+            // 🔥 onlayn video manzil
+            const videoSrc = `${REMOTE_BASE}/assets/videos/${currentPack}_${i}.mp4?t=${Date.now()}`;
+
             preset.innerHTML = `
-                <div class="preset-thumb">
-                    <video muted loop playsinline>
-                        <source src="./assets/videos/${currentPack}_${i}.mp4?t=${Date.now()}" type="video/mp4" />
-                    </video>
-                    <input type="checkbox" class="favorite-check" data-file="${currentPack}_${i}.ffx">
-                </div>
-                <div class="preset-name">${packType} ${i}</div>
-            `;
+        <div class="preset-thumb">
+            <video muted loop playsinline>
+                <source src="${videoSrc}" type="video/mp4" />
+            </video>
+            <input type="checkbox" class="favorite-check" data-file="${currentPack}_${i}.ffx">
+        </div>
+        <div class="preset-name">${packType} ${i}</div>
+    `;
             presetList.appendChild(preset);
         }
 
