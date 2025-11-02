@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // ---------------- CONFIG ----------------
     const GITHUB_RAW = 'https://raw.githubusercontent.com/Cyber05CC/darkpanel/main';
     const UPDATE_URL = GITHUB_RAW + '/update.json';
-    const BUNDLE_VERSION = '1.5';
+    const BUNDLE_VERSION = '1.6';
     const LS_INSTALLED = 'darkpanel_installed_version';
     // ----------------------------------------
 
