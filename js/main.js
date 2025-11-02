@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // ----------------------- UPDATE CONFIG -----------------------
     const REMOTE_BASE = 'https://darkpanel-coral.vercel.app';
     const UPDATE_URL = REMOTE_BASE + '/update.json';
-    const BUNDLE_VERSION = '2.0'; // CSXS/manifest.xml bilan mos bo'lsin
+    const BUNDLE_VERSION = '1.7';
     const LS_INSTALLED = 'darkpanel_installed_version';
     const SUPPORTED_TEXT_FILES = ['index.html', 'css/style.css', 'js/main.js', 'CSXS/manifest.xml'];
     // -------------------------------------------------------------
@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // ----------------------- BOOT -----------------------
     init();
-    safeCheckForUpdates(); // sahifa ochilganda update tekshir
+    safeCheckForUpdates();
     // ---------------------------------------------------
 
     // ===================== UPDATE SYSTEM =====================
@@ -42,11 +42,10 @@ document.addEventListener('DOMContentLoaded', function () {
             const res = await fetch(UPDATE_URL + '?t=' + Date.now());
             if (!res.ok) throw new Error('update.json not found');
             const remote = await res.json();
-
             const installed = localStorage.getItem(LS_INSTALLED) || BUNDLE_VERSION;
 
-            if (remote && remote.version && remote.version !== installed) {
-                showUpdatePopup(remote.version, remote.files || {});
+            if (remote?.version && remote.version !== installed) {
+                showUpdatePopup(remote.version, remote.files);
             } else {
                 console.log('✅ Up to date:', installed);
             }
@@ -61,54 +60,40 @@ document.addEventListener('DOMContentLoaded', function () {
 
         const popup = document.createElement('div');
         popup.className = 'custom-alert update visible';
-        popup.innerHTML =
-            '' +
-            '<div class="alert-content">' +
-            '  <div class="alert-message">🆕 New update available (v' +
-            version +
-            ')</div>' +
-            '  <div style="display:flex;gap:10px;justify-content:center;margin-top:8px">' +
-            '    <button id="updateNow" class="alert-close">Update Now</button>' +
-            '    <button id="updateLater" class="alert-close" style="background:#3b3b3b">Later</button>' +
-            '  </div>' +
-            '</div>';
+        popup.innerHTML = `
+            <div class="alert-content">
+                <div class="alert-message">🆕 New update available (v${version})</div>
+                <div style="display:flex;gap:10px;justify-content:center;margin-top:8px">
+                    <button id="updateNow" class="alert-close">Update Now</button>
+                    <button id="updateLater" class="alert-close" style="background:#3b3b3b">Later</button>
+                </div>
+            </div>
+        `;
         document.body.appendChild(popup);
 
-        var btnLater = document.getElementById('updateLater');
-        if (btnLater)
-            btnLater.addEventListener('click', function () {
-                popup.remove();
-            });
+        document.getElementById('updateLater').addEventListener('click', () => popup.remove());
 
-        var btnNow = document.getElementById('updateNow');
-        if (btnNow)
-            btnNow.addEventListener('click', async function () {
-                setUpdateStatus('⏳ Downloading & applying…');
-                try {
-                    // 1) Extension papkaga yozishga urinamiz
-                    const ok = await tryWriteToExtension(files);
-                    if (ok) {
-                        localStorage.setItem(LS_INSTALLED, version);
-                        setUpdateStatus('✅ Update complete. Reloading…');
-                        setTimeout(function () {
-                            location.reload();
-                        }, 1000);
-                        return;
-                    }
-
-                    // 2) Ruxsat bo'lmasa — overlay rejim
-                    await applyRemoteOverlay(files);
+        document.getElementById('updateNow').addEventListener('click', async () => {
+            setStatus('⏳ Downloading & applying…');
+            try {
+                const ok = await tryWriteToExtension(files);
+                if (ok) {
                     localStorage.setItem(LS_INSTALLED, version);
-                    setUpdateStatus('✅ Update applied (overlay). Please restart AE.');
-                } catch (err) {
-                    console.error(err);
-                    setUpdateStatus(
-                        '❌ Update failed: ' + (err && err.message ? err.message : err)
-                    );
+                    setStatus('✅ Update complete. Reloading…');
+                    setTimeout(() => location.reload(), 1000);
+                    return;
                 }
-            });
 
-        function setUpdateStatus(msg) {
+                await applyRemoteOverlay(files);
+                localStorage.setItem(LS_INSTALLED, version);
+                setStatus('✅ Update applied (overlay). Restart AE to fully apply.');
+            } catch (err) {
+                console.error(err);
+                setStatus('❌ Update failed: ' + err.message);
+            }
+        });
+
+        function setStatus(msg) {
             popup.querySelector('.alert-message').textContent = msg;
         }
     }
@@ -116,9 +101,9 @@ document.addEventListener('DOMContentLoaded', function () {
     async function tryWriteToExtension(files) {
         const extRoot = csInterface.getSystemPath(SystemPath.EXTENSION);
 
-        // JSX uchun xavfsiz qochirish (Expected ')' xatosini yechadi)
-        function escapeForJSX(str) {
-            return String(str)
+        // JSON.stringify qilingan textni JSX uchun xavfsiz qiladi
+        function escapeJSX(text) {
+            return text
                 .replace(/\\/g, '\\\\')
                 .replace(/'/g, "\\'")
                 .replace(/"/g, '\\"')
@@ -126,79 +111,63 @@ document.addEventListener('DOMContentLoaded', function () {
                 .replace(/\n/g, '\\n');
         }
 
-        function ensureFoldersScript(fullPath) {
-            return (
-                '(function(){' +
-                'function ensureFolder(path){' +
-                ' var parts = path.split(/[\\\\\\/]/);' +
-                ' var acc = parts.shift();' +
-                ' while(parts.length){' +
-                '  acc += "/" + parts.shift();' +
-                '  var f = new Folder(acc);' +
-                '  if(!f.exists){ try{ f.create(); }catch(e){ return "ERR:"+e; } }' +
-                ' }' +
-                ' return "OK";' +
-                '}' +
-                'return ensureFolder("' +
-                fullPath.replace(/"/g, '\\"') +
-                '");' +
-                '})()'
-            );
-        }
+        const ensureFoldersScript = (fullPath) => `
+            (function(){
+                function ensureFolder(path){
+                    var parts = path.split(/[\\\\/]/);
+                    var acc = parts.shift();
+                    while(parts.length){
+                        acc += "/" + parts.shift();
+                        var f = new Folder(acc);
+                        if(!f.exists){ try{ f.create(); }catch(e){ return "ERR:"+e; } }
+                    }
+                    return "OK";
+                }
+                return ensureFolder("${fullPath.replace(/"/g, '\\"')}");
+            })();
+        `;
 
-        for (const key in files) {
-            if (!files.hasOwnProperty(key)) continue;
-            const rel = key;
-            const info = files[rel];
-            if (SUPPORTED_TEXT_FILES.indexOf(rel) === -1) continue; // faqat matnli fayllar
-
+        for (const [rel, info] of Object.entries(files || {})) {
+            if (!SUPPORTED_TEXT_FILES.includes(rel)) continue;
             const url = info.url + '?t=' + Date.now();
             const text = await (await fetch(url)).text();
-            const safeText = escapeForJSX(text);
+            const safeText = escapeJSX(text);
 
-            // papkani yaratish
             const dir = rel.split('/').slice(0, -1).join('/');
             if (dir) {
-                const targetDir = extRoot + '/' + dir;
-                const okFolder = await new Promise(function (resolve) {
-                    csInterface.evalScript(ensureFoldersScript(targetDir), function (res) {
-                        resolve(res === 'OK');
-                    });
+                const targetDir = `${extRoot}/${dir}`;
+                const ok = await new Promise((resolve) => {
+                    csInterface.evalScript(ensureFoldersScript(targetDir), (res) =>
+                        resolve(res === 'OK')
+                    );
                 });
-                if (!okFolder) return false;
+                if (!ok) return false;
             }
 
-            // yozish
-            const targetFile = extRoot + '/' + rel;
-            const writeScript =
-                '(function(){' +
-                ' try{' +
-                "  var f = new File('" +
-                targetFile.replace(/'/g, "\\'") +
-                "');" +
-                "  f.encoding = 'UTF-8';" +
-                "  f.open('w');" +
-                "  f.write('" +
-                safeText +
-                "');" +
-                '  f.close();' +
-                "  return 'OK';" +
-                ' }catch(e){ return "ERR:"+e.toString(); }' +
-                '})()';
-
-            const wrote = await new Promise(function (resolve) {
-                csInterface.evalScript(writeScript, function (res) {
-                    resolve(res === 'OK');
-                });
+            const targetFile = `${extRoot}/${rel}`;
+            const writeScript = `
+                (function(){
+                    try{
+                        var f = new File("${targetFile.replace(/"/g, '\\"')}");
+                        f.encoding = "UTF-8";
+                        f.open("w");
+                        f.write("${safeText}");
+                        f.close();
+                        return "OK";
+                    }catch(e){ return "ERR:"+e.toString(); }
+                })();
+            `;
+            const wrote = await new Promise((resolve) => {
+                csInterface.evalScript(writeScript, (res) => resolve(res === 'OK'));
             });
-            if (!wrote) return false; // bittasi ham yozilmasa — ruxsat yo'q
+            if (!wrote) return false;
         }
         return true;
     }
 
     async function applyRemoteOverlay(files) {
-        // CSS hot-swap
-        if (files['css/style.css'] && files['css/style.css'].url) {
+        // CSS yangilanishi
+        if (files['css/style.css']) {
             const id = 'overlay-style';
             let link = document.getElementById(id);
             if (!link) {
@@ -210,19 +179,30 @@ document.addEventListener('DOMContentLoaded', function () {
             link.href = files['css/style.css'].url + '?t=' + Date.now();
         }
 
-        // <main> ichini serverdan almashtirish
-        if (files['index.html'] && files['index.html'].url) {
+        // HTML (UI) yangilanishi — endi to‘liq sahifani hot-reload qiladi
+        if (files['index.html']) {
             try {
                 const html = await (
                     await fetch(files['index.html'].url + '?t=' + Date.now())
                 ).text();
-                const tmp = document.createElement('div');
-                tmp.innerHTML = html;
-                const newMain = tmp.querySelector('main');
+                const parser = new DOMParser();
+                const newDoc = parser.parseFromString(html, 'text/html');
+
+                const newMain = newDoc.querySelector('main');
                 const curMain = document.querySelector('main');
-                if (newMain && curMain) curMain.innerHTML = newMain.innerHTML;
+                if (newMain && curMain) {
+                    curMain.innerHTML = newMain.innerHTML;
+                    console.log('✅ UI updated (overlay)');
+                }
+
+                // yangi JS-ni ham hot-reload
+                if (files['js/main.js']) {
+                    const script = document.createElement('script');
+                    script.src = files['js/main.js'].url + '?t=' + Date.now();
+                    document.body.appendChild(script);
+                }
             } catch (e) {
-                console.log('Overlay HTML swap skipped:', e);
+                console.warn('Overlay HTML swap skipped:', e);
             }
         }
     }
@@ -243,12 +223,12 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!packBtn) return;
         if (currentPack === 'text') {
             packBtn.textContent = 'Text Pack ▼';
-            if (textPackBtn) textPackBtn.classList.add('active');
-            if (effectPackBtn) effectPackBtn.classList.remove('active');
+            textPackBtn?.classList.add('active');
+            effectPackBtn?.classList.remove('active');
         } else {
             packBtn.textContent = 'Effect Pack ▼';
-            if (effectPackBtn) effectPackBtn.classList.add('active');
-            if (textPackBtn) textPackBtn.classList.remove('active');
+            effectPackBtn?.classList.add('active');
+            textPackBtn?.classList.remove('active');
         }
     }
 
@@ -261,29 +241,16 @@ document.addEventListener('DOMContentLoaded', function () {
         for (let i = 1; i <= presetCount; i++) {
             const preset = document.createElement('div');
             preset.className = 'preset';
-            preset.dataset.file = currentPack + '_' + i + '.ffx';
-            preset.innerHTML =
-                '<div class="preset-thumb">' +
-                '  <video muted loop playsinline>' +
-                '    <source src="./assets/videos/' +
-                currentPack +
-                '_' +
-                i +
-                '.mp4?t=' +
-                Date.now() +
-                '" type="video/mp4" />' +
-                '  </video>' +
-                '  <input type="checkbox" class="favorite-check" data-file="' +
-                currentPack +
-                '_' +
-                i +
-                '.ffx">' +
-                '</div>' +
-                '<div class="preset-name">' +
-                packType +
-                ' ' +
-                i +
-                '</div>';
+            preset.dataset.file = `${currentPack}_${i}.ffx`;
+            preset.innerHTML = `
+                <div class="preset-thumb">
+                    <video muted loop playsinline>
+                        <source src="./assets/videos/${currentPack}_${i}.mp4?t=${Date.now()}" type="video/mp4" />
+                    </video>
+                    <input type="checkbox" class="favorite-check" data-file="${currentPack}_${i}.ffx">
+                </div>
+                <div class="preset-name">${packType} ${i}</div>
+            `;
             presetList.appendChild(preset);
         }
 
@@ -295,16 +262,16 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function setupVideoHover() {
-        presets.forEach(function (preset) {
+        presets.forEach((preset) => {
             const video = preset.querySelector('video');
-            preset.addEventListener('mouseenter', function () {
-                if (!autoPlayCheckbox || !autoPlayCheckbox.checked) {
+            preset.addEventListener('mouseenter', () => {
+                if (!autoPlayCheckbox?.checked) {
                     video.currentTime = 0;
-                    video.play().catch(function () {});
+                    video.play().catch(() => {});
                 }
             });
-            preset.addEventListener('mouseleave', function () {
-                if (!autoPlayCheckbox || !autoPlayCheckbox.checked) {
+            preset.addEventListener('mouseleave', () => {
+                if (!autoPlayCheckbox?.checked) {
                     video.pause();
                     video.currentTime = 0;
                 }
@@ -313,11 +280,11 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function initializeFavorites() {
-        presets.forEach(function (preset) {
+        presets.forEach((preset) => {
             const file = preset.dataset.file;
             const checkbox = preset.querySelector('.favorite-check');
             if (!checkbox) return;
-            checkbox.checked = favorites.indexOf(file) !== -1;
+            checkbox.checked = favorites.includes(file);
             checkbox.addEventListener('change', function () {
                 toggleFavorite(file, this.checked);
             });
@@ -325,11 +292,8 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function toggleFavorite(file, isFavorite) {
-        if (isFavorite && favorites.indexOf(file) === -1) favorites.push(file);
-        else if (!isFavorite)
-            favorites = favorites.filter(function (f) {
-                return f !== file;
-            });
+        if (isFavorite && !favorites.includes(file)) favorites.push(file);
+        else if (!isFavorite) favorites = favorites.filter((f) => f !== file);
         localStorage.setItem('favorites', JSON.stringify(favorites));
         if (currentView === 'favorites') showPage(1);
     }
@@ -338,13 +302,11 @@ document.addEventListener('DOMContentLoaded', function () {
         const filteredPresets = filterPresets();
         currentPage = page;
         totalPages = Math.ceil(filteredPresets.length / itemsPerPage) || 1;
-        presets.forEach(function (p) {
-            p.style.display = 'none';
-        });
-        filteredPresets.slice((page - 1) * itemsPerPage, page * itemsPerPage).forEach(function (p) {
-            p.style.display = 'block';
-        });
-        if (pageInfo) pageInfo.textContent = 'Page ' + currentPage + ' of ' + totalPages;
+        presets.forEach((p) => (p.style.display = 'none'));
+        filteredPresets
+            .slice((page - 1) * itemsPerPage, page * itemsPerPage)
+            .forEach((p) => (p.style.display = 'block'));
+        if (pageInfo) pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
         if (prevPageBtn) prevPageBtn.disabled = currentPage === 1;
         if (nextPageBtn) nextPageBtn.disabled = currentPage === totalPages;
         manageVideos();
@@ -356,33 +318,30 @@ document.addEventListener('DOMContentLoaded', function () {
             (currentPage - 1) * itemsPerPage,
             currentPage * itemsPerPage
         );
-        current.forEach(function (p) {
+        current.forEach((p) => {
             const v = p.querySelector('video');
-            if (autoPlayCheckbox && autoPlayCheckbox.checked) v.play().catch(function () {});
+            if (autoPlayCheckbox?.checked) v.play().catch(() => {});
             else v.pause();
         });
     }
 
     function filterPresets() {
-        return Array.prototype.slice.call(presets).filter(function (preset) {
-            return currentView === 'all' || favorites.indexOf(preset.dataset.file) !== -1;
-        });
+        return Array.from(presets).filter(
+            (preset) => currentView === 'all' || favorites.includes(preset.dataset.file)
+        );
     }
 
     function setupPresetSelection() {
-        presets.forEach(function (preset) {
-            preset.addEventListener('click', function (e) {
-                if (e.target && e.target.classList && e.target.classList.contains('favorite-check'))
-                    return;
-                presets.forEach(function (p) {
-                    p.classList.remove('selected');
-                });
+        presets.forEach((preset) => {
+            preset.addEventListener('click', (e) => {
+                if (e.target.classList.contains('favorite-check')) return;
+                presets.forEach((p) => p.classList.remove('selected'));
                 preset.classList.add('selected');
                 selectedPreset = preset.dataset.file;
                 if (status) {
-                    const nameEl = preset.querySelector('.preset-name');
-                    status.textContent =
-                        'Selected: ' + (nameEl ? nameEl.textContent : selectedPreset);
+                    status.textContent = `Selected: ${
+                        preset.querySelector('.preset-name').textContent
+                    }`;
                 }
             });
         });
@@ -393,43 +352,30 @@ document.addEventListener('DOMContentLoaded', function () {
         const presetsContainer = document.querySelector('.presets');
         if (!presetsContainer) return;
 
-        let savedCols = parseInt(localStorage.getItem('gridCols') || '2', 10);
+        let savedCols = parseInt(localStorage.getItem('gridCols')) || 2;
         applyGrid(savedCols);
 
-        gridButtons.forEach(function (btn) {
-            if (parseInt(btn.dataset.cols, 10) === savedCols) btn.classList.add('active');
+        gridButtons.forEach((btn) => {
+            if (parseInt(btn.dataset.cols) === savedCols) btn.classList.add('active');
 
-            btn.addEventListener('click', function () {
-                gridButtons.forEach(function (b) {
-                    b.classList.remove('active');
-                });
+            btn.addEventListener('click', () => {
+                gridButtons.forEach((b) => b.classList.remove('active'));
                 btn.classList.add('active');
-                const cols = parseInt(btn.dataset.cols, 10);
-                localStorage.setItem('gridCols', String(cols));
+                const cols = parseInt(btn.dataset.cols);
+                localStorage.setItem('gridCols', cols);
                 applyGrid(cols);
             });
         });
 
         function applyGrid(cols) {
-            presetsContainer.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
-            presetsContainer.dataset.cols = String(cols);
+            presetsContainer.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+            presetsContainer.dataset.cols = cols;
         }
-
-        window.addEventListener('resize', function () {
-            if (window.innerWidth <= 420) {
-                presetsContainer.style.gridTemplateColumns = 'repeat(1, 1fr)';
-            } else if (window.innerWidth <= 640) {
-                presetsContainer.style.gridTemplateColumns = 'repeat(2, 1fr)';
-            } else {
-                const cols = parseInt(localStorage.getItem('gridCols') || '2', 10);
-                presetsContainer.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
-            }
-        });
     }
 
     function switchPack(packType) {
         if (currentPack === packType) return;
-        document.querySelectorAll('.preset video').forEach(function (v) {
+        document.querySelectorAll('.preset video').forEach((v) => {
             v.pause();
             v.currentTime = 0;
         });
@@ -444,21 +390,20 @@ document.addEventListener('DOMContentLoaded', function () {
     function switchTab(tabType) {
         if (currentView === tabType) return;
         currentView = tabType;
-        if (allTab) allTab.classList.toggle('active', tabType === 'all');
-        if (favoritesTab) favoritesTab.classList.toggle('active', tabType === 'favorites');
+        allTab?.classList.toggle('active', tabType === 'all');
+        favoritesTab?.classList.toggle('active', tabType === 'favorites');
         selectedPreset = null;
         if (status) status.textContent = 'No items selected';
         showPage(1);
     }
 
-    // APPLY PRESET (After Effects)
     function applyPreset() {
         if (!selectedPreset) {
             showCustomAlert('Please select a preset first!', false);
             return;
         }
 
-        const isTextPreset = selectedPreset.indexOf('text_') === 0;
+        const isTextPreset = selectedPreset.startsWith('text_');
         const script = `
             (function() {
                 try {
@@ -477,8 +422,8 @@ document.addEventListener('DOMContentLoaded', function () {
                         var layer = selectedLayers[i];
                         ${
                             isTextPreset
-                                ? 'if (!(layer instanceof TextLayer)) continue;'
-                                : 'if (!layer.property("ADBE Effect Parade")) continue;'
+                                ? `if (!(layer instanceof TextLayer)) continue;`
+                                : `if (!layer.property("ADBE Effect Parade")) continue;`
                         }
                         layer.applyPreset(presetFile);
                         successCount++;
@@ -489,10 +434,10 @@ document.addEventListener('DOMContentLoaded', function () {
         `;
 
         csInterface.evalScript(script, function (result) {
-            if (typeof result === 'string' && result.indexOf('Success:') === 0) {
+            if (result.startsWith('Success:')) {
                 showCustomAlert('Applied to ' + result.split(':')[1] + ' layer(s)', true);
             } else {
-                showCustomAlert(result || 'Unknown error', false);
+                showCustomAlert(result, false);
             }
         });
     }
@@ -503,87 +448,57 @@ document.addEventListener('DOMContentLoaded', function () {
         const videoPath = isSuccess ? './assets/videos/gojo.mp4' : './assets/videos/social.mp4';
         const alertBox = document.createElement('div');
         alertBox.className = 'custom-alert';
-        alertBox.innerHTML =
-            '<div class="alert-content">' +
-            '  <div class="alert-icon">' +
-            '    <video autoplay muted loop playsinline class="alert-video">' +
-            '      <source src="' +
-            videoPath +
-            '" type="video/mp4" />' +
-            '    </video>' +
-            '  </div>' +
-            '  <div class="alert-message">' +
-            message +
-            '</div>' +
-            '  <button class="alert-close">OK</button>' +
-            '</div>';
+        alertBox.innerHTML = `
+            <div class="alert-content">
+                <div class="alert-icon">
+                    <video autoplay muted loop playsinline class="alert-video">
+                        <source src="${videoPath}" type="video/mp4" />
+                    </video>
+                </div>
+                <div class="alert-message">${message}</div>
+                <button class="alert-close">OK</button>
+            </div>
+        `;
         document.body.appendChild(alertBox);
-        setTimeout(function () {
-            alertBox.classList.add('visible');
-        }, 10);
-        var closeBtn = alertBox.querySelector('.alert-close');
-        if (closeBtn)
-            closeBtn.addEventListener('click', function () {
-                alertBox.classList.remove('visible');
-                setTimeout(function () {
-                    alertBox.remove();
-                }, 300);
-            });
+        setTimeout(() => alertBox.classList.add('visible'), 10);
+        alertBox.querySelector('.alert-close').addEventListener('click', () => {
+            alertBox.classList.remove('visible');
+            setTimeout(() => alertBox.remove(), 300);
+        });
     }
 
     function setupEventListeners() {
-        if (autoPlayCheckbox) autoPlayCheckbox.addEventListener('change', manageVideos);
-        if (prevPageBtn)
-            prevPageBtn.addEventListener('click', function () {
-                if (currentPage > 1) showPage(currentPage - 1);
-            });
-        if (nextPageBtn)
-            nextPageBtn.addEventListener('click', function () {
-                if (currentPage < totalPages) showPage(currentPage + 1);
-            });
-        if (refreshBtn)
-            refreshBtn.addEventListener('click', function () {
-                selectedPreset = null;
-                presets.forEach(function (p) {
-                    p.classList.remove('selected');
-                });
-                if (status) status.textContent = 'No items selected';
-                showPage(1);
-            });
-        if (applyBtn) applyBtn.addEventListener('click', applyPreset);
-        if (allTab)
-            allTab.addEventListener('click', function () {
-                switchTab('all');
-            });
-        if (favoritesTab)
-            favoritesTab.addEventListener('click', function () {
-                switchTab('favorites');
-            });
-        if (textPackBtn)
-            textPackBtn.addEventListener('click', function (e) {
-                e.preventDefault();
-                switchPack('text');
-                var dd = document.querySelector('.pack-dropdown-content');
-                if (dd) dd.classList.remove('show');
-            });
-        if (effectPackBtn)
-            effectPackBtn.addEventListener('click', function (e) {
-                e.preventDefault();
-                switchPack('effect');
-                var dd2 = document.querySelector('.pack-dropdown-content');
-                if (dd2) dd2.classList.remove('show');
-            });
-        var packBtn = document.querySelector('.pack-btn');
-        if (packBtn)
-            packBtn.addEventListener('click', function (e) {
-                e.stopPropagation();
-                var dd3 = document.querySelector('.pack-dropdown-content');
-                if (dd3) dd3.classList.toggle('show');
-            });
-        window.addEventListener('click', function () {
-            var dd4 = document.querySelector('.pack-dropdown-content');
-            if (dd4) dd4.classList.remove('show');
+        autoPlayCheckbox?.addEventListener('change', manageVideos);
+        prevPageBtn?.addEventListener('click', () => currentPage > 1 && showPage(currentPage - 1));
+        nextPageBtn?.addEventListener(
+            'click',
+            () => currentPage < totalPages && showPage(currentPage + 1)
+        );
+        refreshBtn?.addEventListener('click', () => {
+            selectedPreset = null;
+            presets.forEach((p) => p.classList.remove('selected'));
+            if (status) status.textContent = 'No items selected';
+            showPage(1);
         });
+        applyBtn?.addEventListener('click', applyPreset);
+        allTab?.addEventListener('click', () => switchTab('all'));
+        favoritesTab?.addEventListener('click', () => switchTab('favorites'));
+        textPackBtn?.addEventListener('click', (e) => {
+            e.preventDefault();
+            switchPack('text');
+            document.querySelector('.pack-dropdown-content')?.classList.remove('show');
+        });
+        effectPackBtn?.addEventListener('click', (e) => {
+            e.preventDefault();
+            switchPack('effect');
+            document.querySelector('.pack-dropdown-content')?.classList.remove('show');
+        });
+        document.querySelector('.pack-btn')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            document.querySelector('.pack-dropdown-content')?.classList.toggle('show');
+        });
+        window.addEventListener('click', () =>
+            document.querySelector('.pack-dropdown-content')?.classList.remove('show')
+        );
     }
-    // -------------------- END UI LOGIKA --------------------
 });
