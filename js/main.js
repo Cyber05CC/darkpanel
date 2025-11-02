@@ -30,8 +30,6 @@ document.addEventListener('DOMContentLoaded', function () {
         setupPresetSelection();
         setupGridControl();
         status.textContent = 'No items selected';
-        console.log('Checking updates...');
-        checkForSmartUpdates(); // 🆕 Avtomatik update tekshiruvi
     }
 
     // 🔹 PACK UI
@@ -230,7 +228,7 @@ document.addEventListener('DOMContentLoaded', function () {
         showPage(1);
     }
 
-    // 🔹 APPLY PRESET
+    // 🔹 APPLY PRESET (❗To‘liq qismi)
     function applyPreset() {
         if (!selectedPreset) {
             showCustomAlert('Please select a preset first!', false);
@@ -245,30 +243,32 @@ document.addEventListener('DOMContentLoaded', function () {
                         SystemPath.EXTENSION
                     )}/presets/${selectedPreset}';
                     var presetFile = new File(presetPath);
-                    if (!presetFile.exists) return "Error: Preset not found";
+                    
+                    if (!presetFile.exists) return "Error: Preset file not found";
                     var activeItem = app.project.activeItem;
-                    if (!activeItem || !(activeItem instanceof CompItem)) return "Error: No comp";
+                    if (!activeItem || !(activeItem instanceof CompItem)) return "Error: No active composition";
                     var selectedLayers = activeItem.selectedLayers;
-                    if (selectedLayers.length === 0) return "Error: No layer selected";
-                    var success = 0;
+                    if (selectedLayers.length === 0) return "Error: Please select at least one layer";
+                    
+                    var successCount = 0;
                     for (var i = 0; i < selectedLayers.length; i++) {
-                        var l = selectedLayers[i];
+                        var layer = selectedLayers[i];
                         ${
                             isTextPreset
-                                ? `if (!(l instanceof TextLayer)) continue;`
-                                : `if (!l.property("ADBE Effect Parade")) continue;`
+                                ? `if (!(layer instanceof TextLayer)) continue;`
+                                : `if (!layer.property("ADBE Effect Parade")) continue;`
                         }
-                        l.applyPreset(presetFile);
-                        success++;
+                        layer.applyPreset(presetFile);
+                        successCount++;
                     }
-                    return "Success:" + success;
+                    return "Success:" + successCount;
                 } catch(err) {
-                    return "Error:" + err.toString();
+                    return "Error: " + err.toString();
                 }
             })();
         `;
 
-        csInterface.evalScript(script, (result) => {
+        csInterface.evalScript(script, function (result) {
             if (result.startsWith('Success:')) {
                 showCustomAlert('Applied to ' + result.split(':')[1] + ' layer(s)', true);
             } else {
@@ -293,7 +293,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 </div>
                 <div class="alert-message">${message}</div>
                 <button class="alert-close">OK</button>
-            </div>`;
+            </div>
+        `;
         document.body.appendChild(alertBox);
         setTimeout(() => alertBox.classList.add('visible'), 10);
         alertBox.querySelector('.alert-close').addEventListener('click', () => {
@@ -338,67 +339,78 @@ document.addEventListener('DOMContentLoaded', function () {
         );
     }
 
-    // 🆕 SMART UPDATE SYSTEM
+    // 🧩 SMART UPDATE SYSTEM
     async function checkForSmartUpdates() {
-        const cs = new CSInterface();
-        const extPath = cs.getSystemPath(SystemPath.EXTENSION);
-        const currentVersion = '1.2'; // manifest.xml versiya
-
         try {
-            const response = await fetch(
-                'https://darkpanel-coral.vercel.app/update.json?t=' + Date.now()
-            );
-            const remote = await response.json();
-            if (!remote || !remote.files) return;
+            const currentVersion = '1.3'; // bu senga mos ravishda o‘zgartiriladi
+            const updateUrl = 'https://darkpanel-coral.vercel.app/update.json?t=' + Date.now();
 
+            const res = await fetch(updateUrl);
+            if (!res.ok) throw new Error('update.json topilmadi');
+            const remote = await res.json();
+
+            // Versiyani solishtiramiz
             if (remote.version !== currentVersion) {
-                await updateChangedFiles(remote.files, extPath);
+                console.log(`🆕 Yangi versiya topildi: ${remote.version}`);
+                showUpdateAlert(remote.version, remote.files);
+            } else {
+                console.log('✅ darkPanel yangilangan holatda');
             }
         } catch (err) {
-            console.log('Update check failed:', err);
+            console.error('❌ Update check xatosi:', err);
         }
     }
 
-    async function updateChangedFiles(fileList, basePath) {
-        for (const [path, info] of Object.entries(fileList)) {
-            const localFile = new File(basePath + '/' + path);
-            if (!localFile.exists) {
-                await downloadFile(info.url, localFile);
-                continue;
+    // 🧩 Custom alert chiqadi
+    function showUpdateAlert(version, files) {
+        const alert = document.createElement('div');
+        alert.className = 'custom-alert visible';
+        alert.innerHTML = `
+        <div class="alert-content">
+            <div class="alert-message">Yangi versiya (${version}) mavjud!</div>
+            <button id="updateNow" class="alert-close">Update Now</button>
+        </div>
+    `;
+        document.body.appendChild(alert);
+
+        document.getElementById('updateNow').addEventListener('click', async () => {
+            alert.querySelector('.alert-message').textContent = 'Updating...';
+            await downloadAndReplaceFiles(files);
+            alert.querySelector('.alert-message').textContent =
+                '✅ Update completed! Please restart AE.';
+        });
+    }
+
+    // 🧩 Fayllarni yuklab joylash
+    async function downloadAndReplaceFiles(files) {
+        const csInterface = new CSInterface();
+
+        for (const [path, info] of Object.entries(files)) {
+            try {
+                const response = await fetch(info.url + '?t=' + Date.now());
+                const content = await response.text();
+
+                const localPath = `${csInterface.getSystemPath(SystemPath.EXTENSION)}/${path}`;
+                const saveScript = `
+                (function() {
+                    var f = new File("${localPath}");
+                    f.encoding = "UTF-8";
+                    f.open("w");
+                    f.write(${JSON.stringify(content)});
+                    f.close();
+                    return "Saved: ${path}";
+                })();
+            `;
+                await new Promise((resolve) =>
+                    csInterface.evalScript(saveScript, (r) => {
+                        console.log(r);
+                        resolve();
+                    })
+                );
+            } catch (err) {
+                console.error(`❌ ${path} yuklab bo‘lmadi:`, err);
             }
-            localFile.open('r');
-            const data = localFile.read();
-            localFile.close();
-            const hash = calcHash(data);
-            if (hash !== info.hash) await downloadFile(info.url, localFile);
         }
-        showCustomAlert('✅ darkPanel updated successfully. Restart AE.', true);
-    }
-
-    async function downloadFile(url, destFile) {
-        try {
-            const xhr = new XMLHttpRequest();
-            xhr.open('GET', url, false);
-            xhr.overrideMimeType('text/plain; charset=x-user-defined');
-            xhr.send(null);
-            if (xhr.status === 200) {
-                destFile.encoding = 'BINARY';
-                destFile.open('w');
-                destFile.write(xhr.responseText);
-                destFile.close();
-            }
-        } catch (err) {
-            console.log('Download failed for', url, err);
-        }
-    }
-
-    function calcHash(str) {
-        let hash = 0;
-        for (let i = 0; i < str.length; i++) {
-            hash = (hash << 5) - hash + str.charCodeAt(i);
-            hash |= 0;
-        }
-        return hash.toString(16);
     }
 
     init();
