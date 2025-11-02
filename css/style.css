@@ -19,7 +19,7 @@
 }
 
 body {
-    background: radial-gradient(circle at 30% 20%, #100018, #050508 85%);
+    background: radial-gradient(circle at 30% 20%, #ffffff, #050508 85%);
     overflow: hidden;
 }
 
