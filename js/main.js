@@ -114,42 +114,32 @@ document.addEventListener('DOMContentLoaded', function () {
     async function tryWriteToExtension(files) {
         const extRoot = csInterface.getSystemPath(SystemPath.EXTENSION);
 
-        const ensureFoldersScript = (fullPath) => `
-            (function(){
-                function ensureFolder(path){
-                    var parts = path.split(/[\\\\/]/);
-                    var acc = parts.shift();
-                    while(parts.length){
-                        acc += "/" + parts.shift();
-                        var f = new Folder(acc);
-                        if(!f.exists){ try{ f.create(); }catch(e){ return "ERR:"+e; } }
-                    }
-                    return "OK";
-                }
-                return ensureFolder("${fullPath.replace(/"/g, '\\"')}");
-            })();
-        `;
-
-        // encoded matnni 20k bo'limga bo'lamiz (CEP argument limitlarini chetlash uchun)
-        function encodeAndChunk(str, size) {
-            const enc = encodeURIComponent(str);
-            const chunks = [];
-            for (let i = 0; i < enc.length; i += size) {
-                chunks.push(enc.slice(i, i + size));
-            }
-            return chunks;
+        // 🔒 Base64 encoder
+        function toBase64(str) {
+            return btoa(unescape(encodeURIComponent(str)));
         }
 
-        for (const [rel, info] of Object.entries(files || {})) {
-            if (!SUPPORTED_TEXT_FILES.includes(rel)) continue;
+        const ensureFoldersScript = (fullPath) => `
+        (function(){
+            function ensureFolder(path){
+                var parts = path.split(/[\\\\/]/);
+                var acc = parts.shift();
+                while(parts.length){
+                    acc += "/" + parts.shift();
+                    var f = new Folder(acc);
+                    if(!f.exists){ try{ f.create(); }catch(e){ return "ERR:"+e; } }
+                }
+                return "OK";
+            }
+            return ensureFolder("${fullPath.replace(/"/g, '\\"')}");
+        })();
+    `;
 
+        for (const [rel, info] of Object.entries(files || {})) {
             const url = info.url + '?t=' + Date.now();
             const text = await (await fetch(url)).text();
-            const parts = encodeAndChunk(text, 20000); // 20k symbol chunks
-            const partsLiteral =
-                '[' + parts.map((p) => `"${p.replace(/"/g, '\\"')}"`).join(',') + ']';
+            const b64 = toBase64(text); // 🔥 matnni to‘liq Base64 ga o‘giradi
 
-            // papkani yaratish
             const dir = rel.split('/').slice(0, -1).join('/');
             if (dir) {
                 const targetDir = `${extRoot}/${dir}`;
@@ -158,38 +148,30 @@ document.addEventListener('DOMContentLoaded', function () {
                         resolve(res === 'OK')
                     );
                 });
-                if (!ok) {
-                    console.warn('⚠️ ensureFolder failed:', dir);
-                    return false;
-                }
+                if (!ok) return false;
             }
 
             const targetFile = `${extRoot}/${rel}`;
             const writeScript = `
-                (function(){
-                    try{
-                        var f = new File("${targetFile.replace(/"/g, '\\"')}");
-                        f.encoding = "UTF-8";
-                        f.open("w");
-                        var parts = ${partsLiteral};
-                        var joined = parts.join("");
-                        var decoded = decodeURIComponent(joined);
-                        f.write(decoded);
-                        f.close();
-                        return "OK";
-                    }catch(e){ return "ERR:"+e.toString(); }
-                })();
-            `;
+            (function(){
+                try{
+                    var f = new File("${targetFile.replace(/"/g, '\\"')}");
+                    f.encoding = "UTF-8";
+                    f.open("w");
+                    var data = "${b64}";
+                    var decoded = decodeURIComponent(escape(atob(data)));
+                    f.write(decoded);
+                    f.close();
+                    return "OK";
+                }catch(e){ return "ERR:"+e.toString(); }
+            })();
+        `;
 
             const wrote = await new Promise((resolve) => {
                 csInterface.evalScript(writeScript, (res) => resolve(res === 'OK'));
             });
-            if (!wrote) {
-                console.warn('⚠️ write failed for', rel);
-                return false;
-            }
+            if (!wrote) return false;
         }
-        console.log('📝 write-mode OK (files written into extension folder)');
         return true;
     }
 
