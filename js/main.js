@@ -4,8 +4,8 @@ document.addEventListener('DOMContentLoaded', function () {
     // ----------------------- UPDATE CONFIG -----------------------
     const REMOTE_BASE = 'https://darkpanel-coral.vercel.app';
     const UPDATE_URL = REMOTE_BASE + '/update.json';
-    const BUNDLE_VERSION = '1.7'; // CSXS/manifest.xml dagisi bilan mos
-    const LS_INSTALLED = 'darkpanel_installed_version'; // localStorage kalit
+    const BUNDLE_VERSION = '1.8'; // CSXS/manifest.xml bilan mos bo'lsin
+    const LS_INSTALLED = 'darkpanel_installed_version';
     const SUPPORTED_TEXT_FILES = ['index.html', 'css/style.css', 'js/main.js', 'CSXS/manifest.xml'];
     // -------------------------------------------------------------
 
@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // ----------------------- BOOT -----------------------
     init();
-    safeCheckForUpdates(); // sahifa ochilganda tekshir
+    safeCheckForUpdates(); // sahifa ochilganda update tekshir
     // ---------------------------------------------------
 
     // ===================== UPDATE SYSTEM =====================
@@ -45,9 +45,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
             const installed = localStorage.getItem(LS_INSTALLED) || BUNDLE_VERSION;
 
-            // Agar remote versiya KATTA bo'lsa (yoki boshqa) — prompt chiqsin
-            if (remote?.version && remote.version !== installed) {
-                showUpdatePopup(remote.version, remote.files);
+            if (remote && remote.version && remote.version !== installed) {
+                showUpdatePopup(remote.version, remote.files || {});
             } else {
                 console.log('✅ Up to date:', installed);
             }
@@ -62,43 +61,52 @@ document.addEventListener('DOMContentLoaded', function () {
 
         const popup = document.createElement('div');
         popup.className = 'custom-alert update visible';
-        popup.innerHTML = `
-            <div class="alert-content">
-                <div class="alert-message">🆕 New update available (v${version})</div>
-                <div style="display:flex;gap:10px;justify-content:center;margin-top:8px">
-                    <button id="updateNow" class="alert-close">Update Now</button>
-                    <button id="updateLater" class="alert-close" style="background:#3b3b3b">Later</button>
-                </div>
-            </div>
-        `;
+        popup.innerHTML =
+            '' +
+            '<div class="alert-content">' +
+            '  <div class="alert-message">🆕 New update available (v' +
+            version +
+            ')</div>' +
+            '  <div style="display:flex;gap:10px;justify-content:center;margin-top:8px">' +
+            '    <button id="updateNow" class="alert-close">Update Now</button>' +
+            '    <button id="updateLater" class="alert-close" style="background:#3b3b3b">Later</button>' +
+            '  </div>' +
+            '</div>';
         document.body.appendChild(popup);
 
-        document.getElementById('updateLater').addEventListener('click', () => {
-            popup.remove();
-        });
+        var btnLater = document.getElementById('updateLater');
+        if (btnLater)
+            btnLater.addEventListener('click', function () {
+                popup.remove();
+            });
 
-        document.getElementById('updateNow').addEventListener('click', async () => {
-            setUpdateStatus('⏳ Downloading & applying…');
-            try {
-                // 1) Avval extension papkaga yozishga urinib ko'ramiz
-                const ok = await tryWriteToExtension(files);
-                if (ok) {
-                    // muvaffaqiyat — versiyani saqlaymiz, va qayta yuklaymiz
+        var btnNow = document.getElementById('updateNow');
+        if (btnNow)
+            btnNow.addEventListener('click', async function () {
+                setUpdateStatus('⏳ Downloading & applying…');
+                try {
+                    // 1) Extension papkaga yozishga urinamiz
+                    const ok = await tryWriteToExtension(files);
+                    if (ok) {
+                        localStorage.setItem(LS_INSTALLED, version);
+                        setUpdateStatus('✅ Update complete. Reloading…');
+                        setTimeout(function () {
+                            location.reload();
+                        }, 1000);
+                        return;
+                    }
+
+                    // 2) Ruxsat bo'lmasa — overlay rejim
+                    await applyRemoteOverlay(files);
                     localStorage.setItem(LS_INSTALLED, version);
-                    setUpdateStatus('✅ Update complete. Reloading…');
-                    setTimeout(() => location.reload(), 900);
-                    return;
+                    setUpdateStatus('✅ Update applied (overlay). Please restart AE.');
+                } catch (err) {
+                    console.error(err);
+                    setUpdateStatus(
+                        '❌ Update failed: ' + (err && err.message ? err.message : err)
+                    );
                 }
-
-                // 2) Agar yozish ruxsati bo'lmasa — remote overlay rejimi
-                await applyRemoteOverlay(files);
-                localStorage.setItem(LS_INSTALLED, version);
-                setUpdateStatus('✅ Update applied (overlay). Please restart AE.');
-            } catch (err) {
-                console.error(err);
-                setUpdateStatus('❌ Update failed: ' + err.message);
-            }
-        });
+            });
 
         function setUpdateStatus(msg) {
             popup.querySelector('.alert-message').textContent = msg;
@@ -106,70 +114,91 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     async function tryWriteToExtension(files) {
-        // Faqat matnli fayllarni yozamiz (bizning ro'yxat)
-        // muvaffaqiyat bo'lsa true qaytadi
         const extRoot = csInterface.getSystemPath(SystemPath.EXTENSION);
 
-        const ensureFoldersScript = (fullPath) => `
-            (function() {
-                function ensureFolder(path) {
-                    var parts = path.split(/[\\\\/]/);
-                    var acc = parts.shift(); // c: yoki birinchi bo'lak
-                    while (parts.length) {
-                        acc += "/" + parts.shift();
-                        var f = new Folder(acc);
-                        if (!f.exists) { try { f.create(); } catch(e) { return "ERR:" + e; } }
-                    }
-                    return "OK";
-                }
-                return ensureFolder("${fullPath.replace(/"/g, '\\"')}");
-            })();
-        `;
+        // JSX uchun xavfsiz qochirish (Expected ')' xatosini yechadi)
+        function escapeForJSX(str) {
+            return String(str)
+                .replace(/\\/g, '\\\\')
+                .replace(/'/g, "\\'")
+                .replace(/"/g, '\\"')
+                .replace(/\r/g, '\\r')
+                .replace(/\n/g, '\\n');
+        }
 
-        for (const [rel, info] of Object.entries(files || {})) {
-            if (!SUPPORTED_TEXT_FILES.includes(rel)) continue; // faqat shu fayllar
+        function ensureFoldersScript(fullPath) {
+            return (
+                '(function(){' +
+                'function ensureFolder(path){' +
+                ' var parts = path.split(/[\\\\\\/]/);' +
+                ' var acc = parts.shift();' +
+                ' while(parts.length){' +
+                '  acc += "/" + parts.shift();' +
+                '  var f = new Folder(acc);' +
+                '  if(!f.exists){ try{ f.create(); }catch(e){ return "ERR:"+e; } }' +
+                ' }' +
+                ' return "OK";' +
+                '}' +
+                'return ensureFolder("' +
+                fullPath.replace(/"/g, '\\"') +
+                '");' +
+                '})()'
+            );
+        }
+
+        for (const key in files) {
+            if (!files.hasOwnProperty(key)) continue;
+            const rel = key;
+            const info = files[rel];
+            if (SUPPORTED_TEXT_FILES.indexOf(rel) === -1) continue; // faqat matnli fayllar
+
             const url = info.url + '?t=' + Date.now();
-
             const text = await (await fetch(url)).text();
+            const safeText = escapeForJSX(text);
 
-            // papkani yaratish (agar mavjud bo'lmasa)
+            // papkani yaratish
             const dir = rel.split('/').slice(0, -1).join('/');
             if (dir) {
                 const targetDir = extRoot + '/' + dir;
-                const ok = await new Promise((resolve) => {
-                    csInterface.evalScript(ensureFoldersScript(targetDir), (res) =>
-                        resolve(res === 'OK')
-                    );
+                const okFolder = await new Promise(function (resolve) {
+                    csInterface.evalScript(ensureFoldersScript(targetDir), function (res) {
+                        resolve(res === 'OK');
+                    });
                 });
-                if (!ok) return false;
+                if (!okFolder) return false;
             }
 
-            // Faylni yozish
-            const targetFile = `${extRoot}/${rel}`;
-            const writeScript = `
-                (function() {
-                    try {
-                        var f = new File("${targetFile.replace(/"/g, '\\"')}");
-                        f.encoding = "UTF-8";
-                        f.open("w");
-                        f.write(${JSON.stringify(text)});
-                        f.close();
-                        return "OK";
-                    } catch(e) { return "ERR:" + e; }
-                })();
-            `;
-            const wrote = await new Promise((resolve) => {
-                csInterface.evalScript(writeScript, (res) => resolve(res === 'OK'));
+            // yozish
+            const targetFile = extRoot + '/' + rel;
+            const writeScript =
+                '(function(){' +
+                ' try{' +
+                "  var f = new File('" +
+                targetFile.replace(/'/g, "\\'") +
+                "');" +
+                "  f.encoding = 'UTF-8';" +
+                "  f.open('w');" +
+                "  f.write('" +
+                safeText +
+                "');" +
+                '  f.close();' +
+                "  return 'OK';" +
+                ' }catch(e){ return "ERR:"+e.toString(); }' +
+                '})()';
+
+            const wrote = await new Promise(function (resolve) {
+                csInterface.evalScript(writeScript, function (res) {
+                    resolve(res === 'OK');
+                });
             });
-            if (!wrote) return false; // bitta ham yozilmasa — demak ruxsat yo‘q
+            if (!wrote) return false; // bittasi ham yozilmasa — ruxsat yo'q
         }
         return true;
     }
 
     async function applyRemoteOverlay(files) {
-        // Yozish bo'lmasa: CSS/HTML’ni serverdan yuklab ichida qo‘llaymiz
-        // 1) CSS’ni hot-swap
-        if (files['css/style.css']) {
+        // CSS hot-swap
+        if (files['css/style.css'] && files['css/style.css'].url) {
             const id = 'overlay-style';
             let link = document.getElementById(id);
             if (!link) {
@@ -181,13 +210,12 @@ document.addEventListener('DOMContentLoaded', function () {
             link.href = files['css/style.css'].url + '?t=' + Date.now();
         }
 
-        // 2) index.html ichidagi <main>ni yangilash (agar bor bo'lsa)
-        if (files['index.html']) {
+        // <main> ichini serverdan almashtirish
+        if (files['index.html'] && files['index.html'].url) {
             try {
                 const html = await (
                     await fetch(files['index.html'].url + '?t=' + Date.now())
                 ).text();
-                // faqat <main> kontentini almashtiramiz
                 const tmp = document.createElement('div');
                 tmp.innerHTML = html;
                 const newMain = tmp.querySelector('main');
@@ -215,12 +243,12 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!packBtn) return;
         if (currentPack === 'text') {
             packBtn.textContent = 'Text Pack ▼';
-            textPackBtn?.classList.add('active');
-            effectPackBtn?.classList.remove('active');
+            if (textPackBtn) textPackBtn.classList.add('active');
+            if (effectPackBtn) effectPackBtn.classList.remove('active');
         } else {
             packBtn.textContent = 'Effect Pack ▼';
-            effectPackBtn?.classList.add('active');
-            textPackBtn?.classList.remove('active');
+            if (effectPackBtn) effectPackBtn.classList.add('active');
+            if (textPackBtn) textPackBtn.classList.remove('active');
         }
     }
 
@@ -233,16 +261,29 @@ document.addEventListener('DOMContentLoaded', function () {
         for (let i = 1; i <= presetCount; i++) {
             const preset = document.createElement('div');
             preset.className = 'preset';
-            preset.dataset.file = `${currentPack}_${i}.ffx`;
-            preset.innerHTML = `
-                <div class="preset-thumb">
-                    <video muted loop playsinline>
-                        <source src="./assets/videos/${currentPack}_${i}.mp4?t=${Date.now()}" type="video/mp4" />
-                    </video>
-                    <input type="checkbox" class="favorite-check" data-file="${currentPack}_${i}.ffx">
-                </div>
-                <div class="preset-name">${packType} ${i}</div>
-            `;
+            preset.dataset.file = currentPack + '_' + i + '.ffx';
+            preset.innerHTML =
+                '<div class="preset-thumb">' +
+                '  <video muted loop playsinline>' +
+                '    <source src="./assets/videos/' +
+                currentPack +
+                '_' +
+                i +
+                '.mp4?t=' +
+                Date.now() +
+                '" type="video/mp4" />' +
+                '  </video>' +
+                '  <input type="checkbox" class="favorite-check" data-file="' +
+                currentPack +
+                '_' +
+                i +
+                '.ffx">' +
+                '</div>' +
+                '<div class="preset-name">' +
+                packType +
+                ' ' +
+                i +
+                '</div>';
             presetList.appendChild(preset);
         }
 
@@ -254,16 +295,16 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function setupVideoHover() {
-        presets.forEach((preset) => {
+        presets.forEach(function (preset) {
             const video = preset.querySelector('video');
-            preset.addEventListener('mouseenter', () => {
-                if (!autoPlayCheckbox?.checked) {
+            preset.addEventListener('mouseenter', function () {
+                if (!autoPlayCheckbox || !autoPlayCheckbox.checked) {
                     video.currentTime = 0;
-                    video.play().catch(() => {});
+                    video.play().catch(function () {});
                 }
             });
-            preset.addEventListener('mouseleave', () => {
-                if (!autoPlayCheckbox?.checked) {
+            preset.addEventListener('mouseleave', function () {
+                if (!autoPlayCheckbox || !autoPlayCheckbox.checked) {
                     video.pause();
                     video.currentTime = 0;
                 }
@@ -272,11 +313,11 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function initializeFavorites() {
-        presets.forEach((preset) => {
+        presets.forEach(function (preset) {
             const file = preset.dataset.file;
             const checkbox = preset.querySelector('.favorite-check');
             if (!checkbox) return;
-            checkbox.checked = favorites.includes(file);
+            checkbox.checked = favorites.indexOf(file) !== -1;
             checkbox.addEventListener('change', function () {
                 toggleFavorite(file, this.checked);
             });
@@ -284,8 +325,11 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function toggleFavorite(file, isFavorite) {
-        if (isFavorite && !favorites.includes(file)) favorites.push(file);
-        else if (!isFavorite) favorites = favorites.filter((f) => f !== file);
+        if (isFavorite && favorites.indexOf(file) === -1) favorites.push(file);
+        else if (!isFavorite)
+            favorites = favorites.filter(function (f) {
+                return f !== file;
+            });
         localStorage.setItem('favorites', JSON.stringify(favorites));
         if (currentView === 'favorites') showPage(1);
     }
@@ -294,11 +338,13 @@ document.addEventListener('DOMContentLoaded', function () {
         const filteredPresets = filterPresets();
         currentPage = page;
         totalPages = Math.ceil(filteredPresets.length / itemsPerPage) || 1;
-        presets.forEach((p) => (p.style.display = 'none'));
-        filteredPresets
-            .slice((page - 1) * itemsPerPage, page * itemsPerPage)
-            .forEach((p) => (p.style.display = 'block'));
-        if (pageInfo) pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+        presets.forEach(function (p) {
+            p.style.display = 'none';
+        });
+        filteredPresets.slice((page - 1) * itemsPerPage, page * itemsPerPage).forEach(function (p) {
+            p.style.display = 'block';
+        });
+        if (pageInfo) pageInfo.textContent = 'Page ' + currentPage + ' of ' + totalPages;
         if (prevPageBtn) prevPageBtn.disabled = currentPage === 1;
         if (nextPageBtn) nextPageBtn.disabled = currentPage === totalPages;
         manageVideos();
@@ -310,30 +356,33 @@ document.addEventListener('DOMContentLoaded', function () {
             (currentPage - 1) * itemsPerPage,
             currentPage * itemsPerPage
         );
-        current.forEach((p) => {
+        current.forEach(function (p) {
             const v = p.querySelector('video');
-            if (autoPlayCheckbox?.checked) v.play().catch(() => {});
+            if (autoPlayCheckbox && autoPlayCheckbox.checked) v.play().catch(function () {});
             else v.pause();
         });
     }
 
     function filterPresets() {
-        return Array.from(presets).filter(
-            (preset) => currentView === 'all' || favorites.includes(preset.dataset.file)
-        );
+        return Array.prototype.slice.call(presets).filter(function (preset) {
+            return currentView === 'all' || favorites.indexOf(preset.dataset.file) !== -1;
+        });
     }
 
     function setupPresetSelection() {
-        presets.forEach((preset) => {
-            preset.addEventListener('click', (e) => {
-                if (e.target.classList.contains('favorite-check')) return;
-                presets.forEach((p) => p.classList.remove('selected'));
+        presets.forEach(function (preset) {
+            preset.addEventListener('click', function (e) {
+                if (e.target && e.target.classList && e.target.classList.contains('favorite-check'))
+                    return;
+                presets.forEach(function (p) {
+                    p.classList.remove('selected');
+                });
                 preset.classList.add('selected');
                 selectedPreset = preset.dataset.file;
                 if (status) {
-                    status.textContent = `Selected: ${
-                        preset.querySelector('.preset-name').textContent
-                    }`;
+                    const nameEl = preset.querySelector('.preset-name');
+                    status.textContent =
+                        'Selected: ' + (nameEl ? nameEl.textContent : selectedPreset);
                 }
             });
         });
@@ -344,41 +393,43 @@ document.addEventListener('DOMContentLoaded', function () {
         const presetsContainer = document.querySelector('.presets');
         if (!presetsContainer) return;
 
-        let savedCols = parseInt(localStorage.getItem('gridCols')) || 2;
+        let savedCols = parseInt(localStorage.getItem('gridCols') || '2', 10);
         applyGrid(savedCols);
 
-        gridButtons.forEach((btn) => {
-            if (parseInt(btn.dataset.cols) === savedCols) btn.classList.add('active');
+        gridButtons.forEach(function (btn) {
+            if (parseInt(btn.dataset.cols, 10) === savedCols) btn.classList.add('active');
 
-            btn.addEventListener('click', () => {
-                gridButtons.forEach((b) => b.classList.remove('active'));
+            btn.addEventListener('click', function () {
+                gridButtons.forEach(function (b) {
+                    b.classList.remove('active');
+                });
                 btn.classList.add('active');
-                const cols = parseInt(btn.dataset.cols);
-                localStorage.setItem('gridCols', cols);
+                const cols = parseInt(btn.dataset.cols, 10);
+                localStorage.setItem('gridCols', String(cols));
                 applyGrid(cols);
             });
         });
 
         function applyGrid(cols) {
-            presetsContainer.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-            presetsContainer.dataset.cols = cols;
+            presetsContainer.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+            presetsContainer.dataset.cols = String(cols);
         }
 
-        window.addEventListener('resize', () => {
+        window.addEventListener('resize', function () {
             if (window.innerWidth <= 420) {
                 presetsContainer.style.gridTemplateColumns = 'repeat(1, 1fr)';
             } else if (window.innerWidth <= 640) {
                 presetsContainer.style.gridTemplateColumns = 'repeat(2, 1fr)';
             } else {
-                const cols = parseInt(localStorage.getItem('gridCols')) || 2;
-                presetsContainer.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+                const cols = parseInt(localStorage.getItem('gridCols') || '2', 10);
+                presetsContainer.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
             }
         });
     }
 
     function switchPack(packType) {
         if (currentPack === packType) return;
-        document.querySelectorAll('.preset video').forEach((v) => {
+        document.querySelectorAll('.preset video').forEach(function (v) {
             v.pause();
             v.currentTime = 0;
         });
@@ -393,20 +444,21 @@ document.addEventListener('DOMContentLoaded', function () {
     function switchTab(tabType) {
         if (currentView === tabType) return;
         currentView = tabType;
-        allTab?.classList.toggle('active', tabType === 'all');
-        favoritesTab?.classList.toggle('active', tabType === 'favorites');
+        if (allTab) allTab.classList.toggle('active', tabType === 'all');
+        if (favoritesTab) favoritesTab.classList.toggle('active', tabType === 'favorites');
         selectedPreset = null;
         if (status) status.textContent = 'No items selected';
         showPage(1);
     }
 
+    // APPLY PRESET (After Effects)
     function applyPreset() {
         if (!selectedPreset) {
             showCustomAlert('Please select a preset first!', false);
             return;
         }
 
-        const isTextPreset = selectedPreset.startsWith('text_');
+        const isTextPreset = selectedPreset.indexOf('text_') === 0;
         const script = `
             (function() {
                 try {
@@ -425,8 +477,8 @@ document.addEventListener('DOMContentLoaded', function () {
                         var layer = selectedLayers[i];
                         ${
                             isTextPreset
-                                ? `if (!(layer instanceof TextLayer)) continue;`
-                                : `if (!layer.property("ADBE Effect Parade")) continue;`
+                                ? 'if (!(layer instanceof TextLayer)) continue;'
+                                : 'if (!layer.property("ADBE Effect Parade")) continue;'
                         }
                         layer.applyPreset(presetFile);
                         successCount++;
@@ -437,10 +489,10 @@ document.addEventListener('DOMContentLoaded', function () {
         `;
 
         csInterface.evalScript(script, function (result) {
-            if (result.startsWith('Success:')) {
+            if (typeof result === 'string' && result.indexOf('Success:') === 0) {
                 showCustomAlert('Applied to ' + result.split(':')[1] + ' layer(s)', true);
             } else {
-                showCustomAlert(result, false);
+                showCustomAlert(result || 'Unknown error', false);
             }
         });
     }
@@ -451,58 +503,87 @@ document.addEventListener('DOMContentLoaded', function () {
         const videoPath = isSuccess ? './assets/videos/gojo.mp4' : './assets/videos/social.mp4';
         const alertBox = document.createElement('div');
         alertBox.className = 'custom-alert';
-        alertBox.innerHTML = `
-            <div class="alert-content">
-                <div class="alert-icon">
-                    <video autoplay muted loop playsinline class="alert-video">
-                        <source src="${videoPath}" type="video/mp4" />
-                    </video>
-                </div>
-                <div class="alert-message">${message}</div>
-                <button class="alert-close">OK</button>
-            </div>
-        `;
+        alertBox.innerHTML =
+            '<div class="alert-content">' +
+            '  <div class="alert-icon">' +
+            '    <video autoplay muted loop playsinline class="alert-video">' +
+            '      <source src="' +
+            videoPath +
+            '" type="video/mp4" />' +
+            '    </video>' +
+            '  </div>' +
+            '  <div class="alert-message">' +
+            message +
+            '</div>' +
+            '  <button class="alert-close">OK</button>' +
+            '</div>';
         document.body.appendChild(alertBox);
-        setTimeout(() => alertBox.classList.add('visible'), 10);
-        alertBox.querySelector('.alert-close').addEventListener('click', () => {
-            alertBox.classList.remove('visible');
-            setTimeout(() => alertBox.remove(), 300);
-        });
+        setTimeout(function () {
+            alertBox.classList.add('visible');
+        }, 10);
+        var closeBtn = alertBox.querySelector('.alert-close');
+        if (closeBtn)
+            closeBtn.addEventListener('click', function () {
+                alertBox.classList.remove('visible');
+                setTimeout(function () {
+                    alertBox.remove();
+                }, 300);
+            });
     }
 
     function setupEventListeners() {
-        autoPlayCheckbox?.addEventListener('change', manageVideos);
-        prevPageBtn?.addEventListener('click', () => currentPage > 1 && showPage(currentPage - 1));
-        nextPageBtn?.addEventListener(
-            'click',
-            () => currentPage < totalPages && showPage(currentPage + 1)
-        );
-        refreshBtn?.addEventListener('click', () => {
-            selectedPreset = null;
-            presets.forEach((p) => p.classList.remove('selected'));
-            if (status) status.textContent = 'No items selected';
-            showPage(1);
+        if (autoPlayCheckbox) autoPlayCheckbox.addEventListener('change', manageVideos);
+        if (prevPageBtn)
+            prevPageBtn.addEventListener('click', function () {
+                if (currentPage > 1) showPage(currentPage - 1);
+            });
+        if (nextPageBtn)
+            nextPageBtn.addEventListener('click', function () {
+                if (currentPage < totalPages) showPage(currentPage + 1);
+            });
+        if (refreshBtn)
+            refreshBtn.addEventListener('click', function () {
+                selectedPreset = null;
+                presets.forEach(function (p) {
+                    p.classList.remove('selected');
+                });
+                if (status) status.textContent = 'No items selected';
+                showPage(1);
+            });
+        if (applyBtn) applyBtn.addEventListener('click', applyPreset);
+        if (allTab)
+            allTab.addEventListener('click', function () {
+                switchTab('all');
+            });
+        if (favoritesTab)
+            favoritesTab.addEventListener('click', function () {
+                switchTab('favorites');
+            });
+        if (textPackBtn)
+            textPackBtn.addEventListener('click', function (e) {
+                e.preventDefault();
+                switchPack('text');
+                var dd = document.querySelector('.pack-dropdown-content');
+                if (dd) dd.classList.remove('show');
+            });
+        if (effectPackBtn)
+            effectPackBtn.addEventListener('click', function (e) {
+                e.preventDefault();
+                switchPack('effect');
+                var dd2 = document.querySelector('.pack-dropdown-content');
+                if (dd2) dd2.classList.remove('show');
+            });
+        var packBtn = document.querySelector('.pack-btn');
+        if (packBtn)
+            packBtn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                var dd3 = document.querySelector('.pack-dropdown-content');
+                if (dd3) dd3.classList.toggle('show');
+            });
+        window.addEventListener('click', function () {
+            var dd4 = document.querySelector('.pack-dropdown-content');
+            if (dd4) dd4.classList.remove('show');
         });
-        applyBtn?.addEventListener('click', applyPreset);
-        allTab?.addEventListener('click', () => switchTab('all'));
-        favoritesTab?.addEventListener('click', () => switchTab('favorites'));
-        textPackBtn?.addEventListener('click', (e) => {
-            e.preventDefault();
-            switchPack('text');
-            document.querySelector('.pack-dropdown-content')?.classList.remove('show');
-        });
-        effectPackBtn?.addEventListener('click', (e) => {
-            e.preventDefault();
-            switchPack('effect');
-            document.querySelector('.pack-dropdown-content')?.classList.remove('show');
-        });
-        document.querySelector('.pack-btn')?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            document.querySelector('.pack-dropdown-content')?.classList.toggle('show');
-        });
-        window.addEventListener('click', () =>
-            document.querySelector('.pack-dropdown-content')?.classList.remove('show')
-        );
     }
     // -------------------- END UI LOGIKA --------------------
 });
