@@ -1,10 +1,10 @@
-document.addEventListener('DOMContentLoaded', function () {
+window.onload = function () {
     const csInterface = new CSInterface();
 
     // ----------------------- UPDATE CONFIG -----------------------
     const REMOTE_BASE = 'https://darkpanel-coral.vercel.app';
     const UPDATE_URL = REMOTE_BASE + '/update.json';
-    const BUNDLE_VERSION = '1.7'; // CSXS/manifest.xml dagisi bilan mos bo'lsin
+    const BUNDLE_VERSION = '1.7'; // CSXS/manifest.xml bilan mos bo'lsin
     const LS_INSTALLED = 'darkpanel_installed_version';
     const LS_MODE = 'darkpanel_update_mode'; // 'write' | 'overlay'
     const SUPPORTED_TEXT_FILES = ['index.html', 'css/style.css', 'js/main.js', 'CSXS/manifest.xml'];
@@ -47,7 +47,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const installed = localStorage.getItem(LS_INSTALLED) || BUNDLE_VERSION;
             const mode = localStorage.getItem(LS_MODE) || 'write';
 
-            // Agar oldin overlay bo'lsa — versiya teng bo'lsa ham UI ni har doim qayta qo'llaymiz
+            // Oldin overlay bo'lgan bo'lsa — restartda ham UI ni qayta qo'llaymiz
             if (mode === 'overlay' && remote && remote.files) {
                 console.log('🔁 Re-applying overlay on startup…');
                 await applyRemoteOverlay(remote.files, /*reinit=*/ true);
@@ -94,7 +94,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     return;
                 }
 
-                // Write muvaffaqiyatsiz bo'lsa — overlay rejimi
+                // Write muvaffaqiyatsiz bo'lsa — overlay
                 await applyRemoteOverlay(files, /*reinit=*/ true);
                 localStorage.setItem(LS_INSTALLED, version);
                 localStorage.setItem(LS_MODE, 'overlay');
@@ -110,35 +110,36 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    // --- Asosiy muammo yechimi: JS matnini xavfsiz uzatish (chunk + URI-encoding) ---
+    // --- Fayl yozish: Base64 + decode (AE JSX'da xato chiqmasligi uchun) ---
     async function tryWriteToExtension(files) {
         const extRoot = csInterface.getSystemPath(SystemPath.EXTENSION);
 
-        // 🔒 Base64 encoder
         function toBase64(str) {
             return btoa(unescape(encodeURIComponent(str)));
         }
 
         const ensureFoldersScript = (fullPath) => `
-        (function(){
-            function ensureFolder(path){
-                var parts = path.split(/[\\\\/]/);
-                var acc = parts.shift();
-                while(parts.length){
-                    acc += "/" + parts.shift();
-                    var f = new Folder(acc);
-                    if(!f.exists){ try{ f.create(); }catch(e){ return "ERR:"+e; } }
+            (function(){
+                function ensureFolder(path){
+                    var parts = path.split(/[\\\\/]/);
+                    var acc = parts.shift();
+                    while(parts.length){
+                        acc += "/" + parts.shift();
+                        var f = new Folder(acc);
+                        if(!f.exists){ try{ f.create(); }catch(e){ return "ERR:"+e; } }
+                    }
+                    return "OK";
                 }
-                return "OK";
-            }
-            return ensureFolder("${fullPath.replace(/"/g, '\\"')}");
-        })();
-    `;
+                return ensureFolder("${fullPath.replace(/"/g, '\\"')}");
+            })();
+        `;
 
         for (const [rel, info] of Object.entries(files || {})) {
+            if (!SUPPORTED_TEXT_FILES.includes(rel)) continue;
+
             const url = info.url + '?t=' + Date.now();
             const text = await (await fetch(url)).text();
-            const b64 = toBase64(text); // 🔥 matnni to‘liq Base64 ga o‘giradi
+            const b64 = toBase64(text);
 
             const dir = rel.split('/').slice(0, -1).join('/');
             if (dir) {
@@ -153,19 +154,19 @@ document.addEventListener('DOMContentLoaded', function () {
 
             const targetFile = `${extRoot}/${rel}`;
             const writeScript = `
-            (function(){
-                try{
-                    var f = new File("${targetFile.replace(/"/g, '\\"')}");
-                    f.encoding = "UTF-8";
-                    f.open("w");
-                    var data = "${b64}";
-                    var decoded = decodeURIComponent(escape(atob(data)));
-                    f.write(decoded);
-                    f.close();
-                    return "OK";
-                }catch(e){ return "ERR:"+e.toString(); }
-            })();
-        `;
+                (function(){
+                    try{
+                        var f = new File("${targetFile.replace(/"/g, '\\"')}");
+                        f.encoding = "UTF-8";
+                        f.open("w");
+                        var data = "${b64}";
+                        var decoded = decodeURIComponent(escape(atob(data)));
+                        f.write(decoded);
+                        f.close();
+                        return "OK";
+                    }catch(e){ return "ERR:"+e.toString(); }
+                })();
+            `;
 
             const wrote = await new Promise((resolve) => {
                 csInterface.evalScript(writeScript, (res) => resolve(res === 'OK'));
@@ -175,7 +176,7 @@ document.addEventListener('DOMContentLoaded', function () {
         return true;
     }
 
-    // Overlay: CSS + HTML ni sahifa ichida yangilash va UI’ni qayta init qilish
+    // Overlay: CSS + HTML ni ichida yangilash + UI’ni qayta init
     async function applyRemoteOverlay(files, reinit) {
         // 1) CSS hot-swap
         if (files['css/style.css']) {
@@ -210,10 +211,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         }
 
-        // 3) UI’ni qayta ishga tushirish — shu cardlar yo'qolmasligi uchun SHART
-        if (reinit) {
-            reInitUI();
-        }
+        if (reinit) reInitUI(); // card/eventlar qayta bog'lansin
     }
     // =================== END UPDATE SYSTEM ===================
 
@@ -229,8 +227,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Overlaydan keyin UI’ni qayta bog‘lash
     function reInitUI() {
-        // eski listenerlarni tozalash shart emas — yangi DOM eski listenerlarni ko‘rmaydi
-        // shunchaki boshidan init qilamiz
         selectedPreset = null;
         currentPage = 1;
         updatePackUI();
@@ -266,15 +262,23 @@ document.addEventListener('DOMContentLoaded', function () {
             const preset = document.createElement('div');
             preset.className = 'preset';
             preset.dataset.file = `${currentPack}_${i}.ffx`;
+            // agar video yo'q bo'lsa ham card ko'rinsin — poster fallback:
+            const videoSrc = `./assets/videos/${currentPack}_${i}.mp4?t=${Date.now()}`;
             preset.innerHTML = `
                 <div class="preset-thumb">
-                    <video muted loop playsinline>
-                        <source src="./assets/videos/${currentPack}_${i}.mp4?t=${Date.now()}" type="video/mp4" />
-                    </video>
+                    <video muted loop playsinline onerror="this.style.display='none'"></video>
+                    <div class="poster-fallback">Preview</div>
                     <input type="checkbox" class="favorite-check" data-file="${currentPack}_${i}.ffx">
                 </div>
                 <div class="preset-name">${packType} ${i}</div>
             `;
+            // video source qo'shish (DOM yaratilib bo'lgach)
+            const vid = preset.querySelector('video');
+            const source = document.createElement('source');
+            source.type = 'video/mp4';
+            source.src = videoSrc;
+            vid.appendChild(source);
+
             presetList.appendChild(preset);
         }
 
@@ -283,6 +287,7 @@ document.addEventListener('DOMContentLoaded', function () {
         setupVideoHover();
         setupPresetSelection();
         showPage(1);
+        console.log('🎴 Presets created:', presetList.children.length);
     }
 
     function setupVideoHover() {
@@ -290,14 +295,18 @@ document.addEventListener('DOMContentLoaded', function () {
             const video = preset.querySelector('video');
             preset.addEventListener('mouseenter', () => {
                 if (!autoPlayCheckbox?.checked) {
-                    video.currentTime = 0;
-                    video.play().catch(() => {});
+                    try {
+                        video.currentTime = 0;
+                        video.play();
+                    } catch (_e) {}
                 }
             });
             preset.addEventListener('mouseleave', () => {
                 if (!autoPlayCheckbox?.checked) {
-                    video.pause();
-                    video.currentTime = 0;
+                    try {
+                        video.pause();
+                        video.currentTime = 0;
+                    } catch (_e) {}
                 }
             });
         });
@@ -344,8 +353,15 @@ document.addEventListener('DOMContentLoaded', function () {
         );
         current.forEach((p) => {
             const v = p.querySelector('video');
-            if (autoPlayCheckbox?.checked) v.play().catch(() => {});
-            else v.pause();
+            if (autoPlayCheckbox?.checked) {
+                try {
+                    v.play();
+                } catch (_e) {}
+            } else {
+                try {
+                    v.pause();
+                } catch (_e) {}
+            }
         });
     }
 
@@ -400,8 +416,10 @@ document.addEventListener('DOMContentLoaded', function () {
     function switchPack(packType) {
         if (currentPack === packType) return;
         document.querySelectorAll('.preset video').forEach((v) => {
-            v.pause();
-            v.currentTime = 0;
+            try {
+                v.pause();
+                v.currentTime = 0;
+            } catch (_e) {}
         });
         currentPack = packType;
         localStorage.setItem('currentPack', packType);
@@ -526,4 +544,4 @@ document.addEventListener('DOMContentLoaded', function () {
         );
     }
     // -------------------- END UI LOGIKA --------------------
-});
+};
