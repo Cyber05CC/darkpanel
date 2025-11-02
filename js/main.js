@@ -1,12 +1,12 @@
 document.addEventListener('DOMContentLoaded', function () {
     const csInterface = new CSInterface();
 
-    // ----------------------- CONFIG -----------------------
-    const GITHUB_RAW = 'https://raw.githubusercontent.com/Cyber05CC/darkpanel/main'; // 🔥 GitHub Raw manziling
-    const UPDATE_URL = GITHUB_RAW + '/update.json'; // update.json ham GitHub'dan o'qiladi
-    const BUNDLE_VERSION = '1.2';
+    // ---------------- CONFIG ----------------
+    const GITHUB_RAW = 'https://raw.githubusercontent.com/Cyber05CC/darkpanel/main';
+    const UPDATE_URL = GITHUB_RAW + '/update.json';
+    const BUNDLE_VERSION = '1.5';
     const LS_INSTALLED = 'darkpanel_installed_version';
-    // -------------------------------------------------------
+    // ----------------------------------------
 
     let selectedPreset = null;
     const autoPlayCheckbox = document.getElementById('autoPlay');
@@ -30,13 +30,13 @@ document.addEventListener('DOMContentLoaded', function () {
     let favorites = JSON.parse(localStorage.getItem('favorites')) || [];
     let presets = [];
 
-    // -------------------- STARTUP --------------------
+    // ---------- STARTUP ----------
     setupConnectionWatcher();
     init();
     checkForUpdates();
-    // -------------------------------------------------
+    // ------------------------------
 
-    // ===================== INTERNET WATCHER =====================
+    // ----------- INTERNET WATCHER -----------
     function setupConnectionWatcher() {
         function showConnectionAlert(message, type = 'error') {
             const existing = document.querySelector('.net-alert');
@@ -44,13 +44,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
             const alert = document.createElement('div');
             alert.className = `net-alert ${type}`;
-            alert.innerHTML = `
-                <div class="net-alert-content">
-                    ${type === 'error' ? '📡' : '🌐'} ${message}
-                </div>
-            `;
+            alert.innerHTML = `<div class="net-alert-content">${
+                type === 'error' ? '📡' : '🌐'
+            } ${message}</div>`;
             document.body.appendChild(alert);
             setTimeout(() => alert.classList.add('visible'), 10);
+
             if (type === 'success') {
                 setTimeout(() => {
                     alert.classList.remove('visible');
@@ -72,9 +71,9 @@ document.addEventListener('DOMContentLoaded', function () {
             showConnectionAlert('Siz hozir oflayndasiz! Internetni tekshiring.', 'error');
         }
     }
-    // =============================================================
+    // ----------------------------------------
 
-    // ===================== UPDATE SYSTEM =====================
+    // ----------- UPDATE SYSTEM -----------
     async function checkForUpdates() {
         try {
             const res = await fetch(UPDATE_URL + '?t=' + Date.now());
@@ -84,7 +83,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const installed = localStorage.getItem(LS_INSTALLED) || BUNDLE_VERSION;
 
             if (remote?.version && remote.version !== installed) {
-                showUpdatePopup(remote.version);
+                showUpdatePopup(remote.version, remote.files);
             } else {
                 console.log('✅ Versiya yangilangan:', installed);
             }
@@ -93,7 +92,10 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    function showUpdatePopup(version) {
+    function showUpdatePopup(version, files) {
+        const existing = document.querySelector('.custom-alert.update');
+        if (existing) existing.remove();
+
         const popup = document.createElement('div');
         popup.className = 'custom-alert update visible';
         popup.innerHTML = `
@@ -103,24 +105,28 @@ document.addEventListener('DOMContentLoaded', function () {
                     <button id="updateNow" class="alert-close">Yangilash</button>
                     <button id="updateLater" class="alert-close" style="background:#3b3b3b">Keyinroq</button>
                 </div>
-            </div>
-        `;
+            </div>`;
         document.body.appendChild(popup);
 
         document.getElementById('updateLater').onclick = () => popup.remove();
-        document.getElementById('updateNow').onclick = () => {
-            popup.querySelector('.alert-message').textContent = '⏳ Yangilanmoqda...';
-            setTimeout(() => {
+
+        document.getElementById('updateNow').onclick = async () => {
+            popup.querySelector('.alert-message').textContent = '⏳ Yangilanish yuklanmoqda...';
+            try {
+                for (const [file, info] of Object.entries(files)) {
+                    await fetch(info.url + '?t=' + Date.now());
+                }
                 localStorage.setItem(LS_INSTALLED, version);
-                popup.querySelector('.alert-message').textContent =
-                    '✅ Yangilandi! Iltimos, qayta oching.';
-                setTimeout(() => location.reload(), 1000);
-            }, 1000);
+                popup.querySelector('.alert-message').textContent = '✅ Yangilandi! Qayta oching.';
+                setTimeout(() => location.reload(), 1500);
+            } catch (e) {
+                popup.querySelector('.alert-message').textContent = '❌ Xatolik: ' + e.message;
+            }
         };
     }
-    // ==========================================================
+    // --------------------------------------
 
-    // ---------------------- UI LOGIKA -------------------------
+    // ----------- UI LOGIKA -----------
     function init() {
         updatePackUI();
         createPresets();
@@ -153,7 +159,6 @@ document.addEventListener('DOMContentLoaded', function () {
             const preset = document.createElement('div');
             preset.className = 'preset';
             preset.dataset.file = `${currentPack}_${i}.ffx`;
-
             const videoSrc = `${GITHUB_RAW}/assets/videos/${currentPack}_${i}.mp4?t=${Date.now()}`;
             preset.innerHTML = `
                 <div class="preset-thumb">
@@ -162,8 +167,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     </video>
                     <input type="checkbox" class="favorite-check" data-file="${currentPack}_${i}.ffx">
                 </div>
-                <div class="preset-name">${packType} ${i}</div>
-            `;
+                <div class="preset-name">${packType} ${i}</div>`;
             presetList.appendChild(preset);
         }
 
@@ -295,39 +299,34 @@ document.addEventListener('DOMContentLoaded', function () {
                 reader.onload = () => {
                     const base64data = reader.result.split(',')[1];
                     const jsxScript = `
-(function() {
-    try {
-        function b64decode(b64) {
-            var chars="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-            var out="", buffer=0, bits=0, c;
-            for (var i=0;i<b64.length;i++){c=b64.charAt(i);
-                if(c==='=')break;
-                var idx=chars.indexOf(c);
-                if(idx===-1)continue;
-                buffer=(buffer<<6)|idx; bits+=6;
-                if(bits>=8){bits-=8;out+=String.fromCharCode((buffer>>bits)&0xFF);}
-            } return out;
-        }
+                    (function() {
+                        try {
+                            function b64decode(b64) {
+                                var chars="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+                                var out="", buffer=0, bits=0, c;
+                                for (var i=0;i<b64.length;i++){c=b64.charAt(i);
+                                    if(c==='=')break;
+                                    var idx=chars.indexOf(c);
+                                    if(idx===-1)continue;
+                                    buffer=(buffer<<6)|idx; bits+=6;
+                                    if(bits>=8){bits-=8;out+=String.fromCharCode((buffer>>bits)&0xFF);}
+                                } return out;
+                            }
+                            var presetPath = Folder.temp.fsName + "/temp.ffx";
+                            var f = new File(presetPath);
+                            var bin = b64decode('${base64data}');
+                            f.encoding='BINARY'; f.open('w'); f.write(bin); f.close();
 
-        // ✅ TEMP path to‘g‘rilandi
-        var presetPath = Folder.temp.fsName + "/temp.ffx";
-        var f = new File(presetPath);
-        var bin = b64decode('${base64data}');
-        f.encoding = 'BINARY';
-        f.open('w');
-        f.write(bin);
-        f.close();
-
-        var item = app.project.activeItem;
-        if(!item || !(item instanceof CompItem)) return 'Error: No comp';
-        var layers = item.selectedLayers;
-        if(layers.length === 0) return 'Error: No layers selected';
-        for(var i=0;i<layers.length;i++){layers[i].applyPreset(f);}
-        try{f.remove();}catch(e){}
-        return 'Success:' + layers.length;
-    }catch(e){return 'Error:' + e.toString();}
-})();`;
-
+                            var item=app.project.activeItem;
+                            if(!item||(!
+(item instanceof CompItem)))return'Error: No comp';
+                            var layers=item.selectedLayers;
+                            if(layers.length===0)return'Error: No layers selected';
+                            for(var i=0;i<layers.length;i++){layers[i].applyPreset(f);}
+                            try{f.remove();}catch(e){}
+                            return'Success:'+layers.length;
+                        }catch(e){return'Error:'+e.toString();}
+                    })();`;
                     csInterface.evalScript(jsxScript, (result) => {
                         if (result.startsWith('Success:'))
                             showCustomAlert('✅ Preset applied successfully!', true);
