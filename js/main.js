@@ -1,35 +1,35 @@
 document.addEventListener('DOMContentLoaded', function () {
-    const csInterface = new CSInterface();
+    var csInterface = new CSInterface();
 
     // ----------------------- UPDATE CONFIG -----------------------
-    const REMOTE_BASE = 'https://darkpanel-coral.vercel.app';
-    const UPDATE_URL = REMOTE_BASE + '/update.json';
-    const BUNDLE_VERSION = '1.4';
-    const LS_INSTALLED = 'darkpanel_installed_version';
-    const SUPPORTED_TEXT_FILES = ['index.html', 'css/style.css', 'js/main.js', 'CSXS/manifest.xml'];
+    var REMOTE_BASE = 'https://darkpanel-coral.vercel.app';
+    var UPDATE_URL = REMOTE_BASE + '/update.json';
+    var BUNDLE_VERSION = '1.3';
+    var LS_INSTALLED = 'darkpanel_installed_version';
+    var SUPPORTED_TEXT_FILES = ['index.html', 'css/style.css', 'js/main.js', 'CSXS/manifest.xml'];
     // -------------------------------------------------------------
 
-    let selectedPreset = null;
-    const autoPlayCheckbox = document.getElementById('autoPlay');
-    const presetList = document.getElementById('presetList');
-    const prevPageBtn = document.getElementById('prevPage');
-    const nextPageBtn = document.getElementById('nextPage');
-    const pageInfo = document.getElementById('pageInfo');
-    const allTab = document.getElementById('allTab');
-    const favoritesTab = document.getElementById('favoritesTab');
-    const refreshBtn = document.getElementById('refresh');
-    const applyBtn = document.getElementById('apply');
-    const status = document.getElementById('status');
-    const textPackBtn = document.getElementById('textPackBtn');
-    const effectPackBtn = document.getElementById('effectPackBtn');
+    var selectedPreset = null;
+    var autoPlayCheckbox = document.getElementById('autoPlay');
+    var presetList = document.getElementById('presetList');
+    var prevPageBtn = document.getElementById('prevPage');
+    var nextPageBtn = document.getElementById('nextPage');
+    var pageInfo = document.getElementById('pageInfo');
+    var allTab = document.getElementById('allTab');
+    var favoritesTab = document.getElementById('favoritesTab');
+    var refreshBtn = document.getElementById('refresh');
+    var applyBtn = document.getElementById('apply');
+    var status = document.getElementById('status');
+    var textPackBtn = document.getElementById('textPackBtn');
+    var effectPackBtn = document.getElementById('effectPackBtn');
 
-    const itemsPerPage = 10;
-    let currentPage = 1;
-    let totalPages = 1;
-    let currentView = 'all';
-    let currentPack = localStorage.getItem('currentPack') || 'text';
-    let favorites = JSON.parse(localStorage.getItem('favorites')) || [];
-    let presets = [];
+    var itemsPerPage = 10;
+    var currentPage = 1;
+    var totalPages = 1;
+    var currentView = 'all';
+    var currentPack = localStorage.getItem('currentPack') || 'text';
+    var favorites = JSON.parse(localStorage.getItem('favorites')) || [];
+    var presets = [];
 
     // ----------------------- BOOT -----------------------
     init();
@@ -37,29 +37,31 @@ document.addEventListener('DOMContentLoaded', function () {
     // ---------------------------------------------------
 
     // ===================== UPDATE SYSTEM =====================
-    async function safeCheckForUpdates() {
-        try {
-            const res = await fetch(UPDATE_URL + '?t=' + Date.now());
-            if (!res.ok) throw new Error('update.json not found');
-            const remote = await res.json();
+    function safeCheckForUpdates() {
+        fetch(UPDATE_URL + '?t=' + Date.now())
+            .then(function (response) {
+                if (!response.ok) throw new Error('update.json not found');
+                return response.json();
+            })
+            .then(function (remote) {
+                var installed = localStorage.getItem(LS_INSTALLED) || BUNDLE_VERSION;
 
-            const installed = localStorage.getItem(LS_INSTALLED) || BUNDLE_VERSION;
-
-            if (remote && remote.version && remote.version !== installed) {
-                showUpdatePopup(remote.version, remote.files);
-            } else {
-                console.log('✅ Up to date:', installed);
-            }
-        } catch (e) {
-            console.log('Update check skipped:', e);
-        }
+                if (remote && remote.version && remote.version !== installed) {
+                    showUpdatePopup(remote.version, remote.files);
+                } else {
+                    console.log('✅ Up to date:', installed);
+                }
+            })
+            .catch(function (e) {
+                console.log('Update check skipped:', e);
+            });
     }
 
     function showUpdatePopup(version, files) {
-        const existing = document.querySelector('.custom-alert.update');
+        var existing = document.querySelector('.custom-alert.update');
         if (existing) existing.remove();
 
-        const popup = document.createElement('div');
+        var popup = document.createElement('div');
         popup.className = 'custom-alert update visible';
         popup.innerHTML =
             '<div class="alert-content"><div class="alert-message">🆕 New update available (v' +
@@ -81,107 +83,141 @@ document.addEventListener('DOMContentLoaded', function () {
             if (messageEl) messageEl.textContent = msg;
         }
 
-        async function tryUpdate() {
-            try {
-                var ok = await tryWriteToExtension(files);
-                if (ok) {
+        function tryUpdate() {
+            tryWriteToExtension(files)
+                .then(function (ok) {
+                    if (ok) {
+                        localStorage.setItem(LS_INSTALLED, version);
+                        setUpdateStatus('✅ Update complete. Reloading…');
+                        setTimeout(function () {
+                            location.reload();
+                        }, 900);
+                        return;
+                    }
+                    return applyRemoteOverlay(files);
+                })
+                .then(function () {
                     localStorage.setItem(LS_INSTALLED, version);
-                    setUpdateStatus('✅ Update complete. Reloading…');
-                    setTimeout(function () {
-                        location.reload();
-                    }, 900);
+                    setUpdateStatus('✅ Update applied (overlay). Please restart AE.');
+                })
+                .catch(function (err) {
+                    console.error(err);
+                    setUpdateStatus('❌ Update failed: ' + err.message);
+                });
+        }
+    }
+
+    function tryWriteToExtension(files) {
+        return new Promise(function (resolve) {
+            var extRoot = csInterface.getSystemPath(csInterface.systemPath.EXTENSION);
+            var fileKeys = Object.keys(files || {});
+            var processed = 0;
+            var success = true;
+
+            function processNext() {
+                if (processed >= fileKeys.length) {
+                    resolve(success);
                     return;
                 }
 
-                await applyRemoteOverlay(files);
-                localStorage.setItem(LS_INSTALLED, version);
-                setUpdateStatus('✅ Update applied (overlay). Please restart AE.');
-            } catch (err) {
-                console.error(err);
-                setUpdateStatus('❌ Update failed: ' + err.message);
-            }
-        }
-    }
+                var rel = fileKeys[processed];
+                processed++;
 
-    async function tryWriteToExtension(files) {
-        var extRoot = csInterface.getSystemPath(SystemPath.EXTENSION);
-
-        var ensureFoldersScript = function (fullPath) {
-            return (
-                '(function() { function ensureFolder(path) { var parts = path.split(/[\\\\/]/); var acc = parts.shift(); while (parts.length) { acc += "/" + parts.shift(); var f = new Folder(acc); if (!f.exists) { try { f.create(); } catch(e) { return "ERR:" + e; } } } return "OK"; } return ensureFolder("' +
-                fullPath.replace(/"/g, '\\"') +
-                '"); })();'
-            );
-        };
-
-        for (var rel in files) {
-            if (!files.hasOwnProperty(rel)) continue;
-            if (SUPPORTED_TEXT_FILES.indexOf(rel) === -1) continue;
-
-            var info = files[rel];
-            var url = info.url + '?t=' + Date.now();
-
-            var response = await fetch(url);
-            var text = await response.text();
-
-            var dir = rel.split('/').slice(0, -1).join('/');
-            if (dir) {
-                var targetDir = extRoot + '/' + dir;
-                var ok = await new Promise(function (resolve) {
-                    csInterface.evalScript(ensureFoldersScript(targetDir), function (res) {
-                        resolve(res === 'OK');
-                    });
-                });
-                if (!ok) return false;
-            }
-
-            var targetFile = extRoot + '/' + rel;
-            var writeScript =
-                '(function() { try { var f = new File("' +
-                targetFile.replace(/"/g, '\\"') +
-                '"); f.encoding = "UTF-8"; f.open("w"); f.write(' +
-                JSON.stringify(text) +
-                '); f.close(); return "OK"; } catch(e) { return "ERR:" + e; } })();';
-
-            var wrote = await new Promise(function (resolve) {
-                csInterface.evalScript(writeScript, function (res) {
-                    resolve(res === 'OK');
-                });
-            });
-            if (!wrote) return false;
-        }
-        return true;
-    }
-
-    async function applyRemoteOverlay(files) {
-        if (files['css/style.css']) {
-            var id = 'overlay-style';
-            var link = document.getElementById(id);
-            if (!link) {
-                link = document.createElement('link');
-                link.rel = 'stylesheet';
-                link.id = id;
-                document.head.appendChild(link);
-            }
-            link.href = files['css/style.css'].url + '?t=' + Date.now();
-        }
-
-        if (files['index.html']) {
-            try {
-                var response = await fetch(files['index.html'].url + '?t=' + Date.now());
-                var html = await response.text();
-
-                var tmp = document.createElement('div');
-                tmp.innerHTML = html;
-                var newMain = tmp.querySelector('main');
-                var curMain = document.querySelector('main');
-                if (newMain && curMain) {
-                    curMain.innerHTML = newMain.innerHTML;
+                if (SUPPORTED_TEXT_FILES.indexOf(rel) === -1) {
+                    processNext();
+                    return;
                 }
-            } catch (e) {
-                console.log('Overlay HTML swap skipped:', e);
+
+                var info = files[rel];
+                var url = info.url + '?t=' + Date.now();
+
+                fetch(url)
+                    .then(function (response) {
+                        return response.text();
+                    })
+                    .then(function (text) {
+                        var dir = rel.split('/').slice(0, -1).join('/');
+                        if (dir) {
+                            var targetDir = extRoot + '/' + dir;
+                            var ensureScript =
+                                '(function() { function ensureFolder(path) { var parts = path.split(/[\\\\/]/); var acc = parts.shift(); while (parts.length) { acc += "/" + parts.shift(); var f = new Folder(acc); if (!f.exists) { try { f.create(); } catch(e) { return "ERR:" + e; } } } return "OK"; } return ensureFolder("' +
+                                targetDir.replace(/"/g, '\\"') +
+                                '"); })();';
+
+                            csInterface.evalScript(ensureScript, function (res) {
+                                if (res !== 'OK') {
+                                    success = false;
+                                    processNext();
+                                    return;
+                                }
+                                writeFile();
+                            });
+                        } else {
+                            writeFile();
+                        }
+
+                        function writeFile() {
+                            var targetFile = extRoot + '/' + rel;
+                            var writeScript =
+                                '(function() { try { var f = new File("' +
+                                targetFile.replace(/"/g, '\\"') +
+                                '"); f.encoding = "UTF-8"; f.open("w"); f.write(' +
+                                JSON.stringify(text) +
+                                '); f.close(); return "OK"; } catch(e) { return "ERR:" + e; } })();';
+
+                            csInterface.evalScript(writeScript, function (res) {
+                                if (res !== 'OK') success = false;
+                                processNext();
+                            });
+                        }
+                    })
+                    .catch(function () {
+                        success = false;
+                        processNext();
+                    });
             }
-        }
+
+            processNext();
+        });
+    }
+
+    function applyRemoteOverlay(files) {
+        return new Promise(function (resolve) {
+            if (files['css/style.css']) {
+                var id = 'overlay-style';
+                var link = document.getElementById(id);
+                if (!link) {
+                    link = document.createElement('link');
+                    link.rel = 'stylesheet';
+                    link.id = id;
+                    document.head.appendChild(link);
+                }
+                link.href = files['css/style.css'].url + '?t=' + Date.now();
+            }
+
+            if (files['index.html']) {
+                fetch(files['index.html'].url + '?t=' + Date.now())
+                    .then(function (response) {
+                        return response.text();
+                    })
+                    .then(function (html) {
+                        var tmp = document.createElement('div');
+                        tmp.innerHTML = html;
+                        var newMain = tmp.querySelector('main');
+                        var curMain = document.querySelector('main');
+                        if (newMain && curMain) {
+                            curMain.innerHTML = newMain.innerHTML;
+                        }
+                        resolve();
+                    })
+                    .catch(function (e) {
+                        console.log('Overlay HTML swap skipped:', e);
+                        resolve();
+                    });
+            } else {
+                resolve();
+            }
+        });
     }
     // =================== END UPDATE SYSTEM ===================
 
@@ -246,33 +282,37 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function setupVideoHover() {
-        presets.forEach(function (preset) {
-            var video = preset.querySelector('video');
-            preset.addEventListener('mouseenter', function () {
-                if (!autoPlayCheckbox || !autoPlayCheckbox.checked) {
-                    video.currentTime = 0;
-                    video.play().catch(function () {});
-                }
-            });
-            preset.addEventListener('mouseleave', function () {
-                if (!autoPlayCheckbox || !autoPlayCheckbox.checked) {
-                    video.pause();
-                    video.currentTime = 0;
-                }
-            });
-        });
+        for (var i = 0; i < presets.length; i++) {
+            (function () {
+                var preset = presets[i];
+                var video = preset.querySelector('video');
+                preset.addEventListener('mouseenter', function () {
+                    if (!autoPlayCheckbox || !autoPlayCheckbox.checked) {
+                        video.currentTime = 0;
+                        video.play().catch(function () {});
+                    }
+                });
+                preset.addEventListener('mouseleave', function () {
+                    if (!autoPlayCheckbox || !autoPlayCheckbox.checked) {
+                        video.pause();
+                        video.currentTime = 0;
+                    }
+                });
+            })();
+        }
     }
 
     function initializeFavorites() {
-        presets.forEach(function (preset) {
+        for (var i = 0; i < presets.length; i++) {
+            var preset = presets[i];
             var file = preset.dataset.file;
             var checkbox = preset.querySelector('.favorite-check');
-            if (!checkbox) return;
+            if (!checkbox) continue;
             checkbox.checked = favorites.indexOf(file) !== -1;
             checkbox.addEventListener('change', function () {
-                toggleFavorite(file, this.checked);
+                toggleFavorite(this.getAttribute('data-file'), this.checked);
             });
-        });
+        }
     }
 
     function toggleFavorite(file, isFavorite) {
@@ -291,12 +331,15 @@ document.addEventListener('DOMContentLoaded', function () {
         var filteredPresets = filterPresets();
         currentPage = page;
         totalPages = Math.ceil(filteredPresets.length / itemsPerPage) || 1;
-        presets.forEach(function (p) {
-            p.style.display = 'none';
-        });
-        filteredPresets.slice((page - 1) * itemsPerPage, page * itemsPerPage).forEach(function (p) {
-            p.style.display = 'block';
-        });
+        for (var i = 0; i < presets.length; i++) {
+            presets[i].style.display = 'none';
+        }
+        var startIndex = (page - 1) * itemsPerPage;
+        var endIndex = page * itemsPerPage;
+        var currentPresets = filteredPresets.slice(startIndex, endIndex);
+        for (var j = 0; j < currentPresets.length; j++) {
+            currentPresets[j].style.display = 'block';
+        }
         if (pageInfo) pageInfo.textContent = 'Page ' + currentPage + ' of ' + totalPages;
         if (prevPageBtn) prevPageBtn.disabled = currentPage === 1;
         if (nextPageBtn) nextPageBtn.disabled = currentPage === totalPages;
@@ -305,38 +348,48 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function manageVideos() {
         var filtered = filterPresets();
-        var current = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-        current.forEach(function (p) {
-            var v = p.querySelector('video');
+        var startIndex = (currentPage - 1) * itemsPerPage;
+        var endIndex = currentPage * itemsPerPage;
+        var currentPresets = filtered.slice(startIndex, endIndex);
+        for (var i = 0; i < currentPresets.length; i++) {
+            var v = currentPresets[i].querySelector('video');
             if (autoPlayCheckbox && autoPlayCheckbox.checked) {
                 v.play().catch(function () {});
             } else {
                 v.pause();
             }
-        });
+        }
     }
 
     function filterPresets() {
-        return Array.from(presets).filter(function (preset) {
-            return currentView === 'all' || favorites.indexOf(preset.dataset.file) !== -1;
-        });
+        var filtered = [];
+        for (var i = 0; i < presets.length; i++) {
+            var preset = presets[i];
+            if (currentView === 'all' || favorites.indexOf(preset.dataset.file) !== -1) {
+                filtered.push(preset);
+            }
+        }
+        return filtered;
     }
 
     function setupPresetSelection() {
-        presets.forEach(function (preset) {
-            preset.addEventListener('click', function (e) {
-                if (e.target.classList.contains('favorite-check')) return;
-                presets.forEach(function (p) {
-                    p.classList.remove('selected');
+        for (var i = 0; i < presets.length; i++) {
+            (function () {
+                var preset = presets[i];
+                preset.addEventListener('click', function (e) {
+                    if (e.target.classList.contains('favorite-check')) return;
+                    for (var j = 0; j < presets.length; j++) {
+                        presets[j].classList.remove('selected');
+                    }
+                    preset.classList.add('selected');
+                    selectedPreset = preset.dataset.file;
+                    if (status) {
+                        status.textContent =
+                            'Selected: ' + preset.querySelector('.preset-name').textContent;
+                    }
                 });
-                preset.classList.add('selected');
-                selectedPreset = preset.dataset.file;
-                if (status) {
-                    status.textContent =
-                        'Selected: ' + preset.querySelector('.preset-name').textContent;
-                }
-            });
-        });
+            })();
+        }
     }
 
     function setupGridControl() {
@@ -347,23 +400,24 @@ document.addEventListener('DOMContentLoaded', function () {
         var savedCols = parseInt(localStorage.getItem('gridCols')) || 2;
         applyGrid(savedCols);
 
-        gridButtons.forEach(function (btn) {
-            if (parseInt(btn.dataset.cols) === savedCols) btn.classList.add('active');
+        for (var i = 0; i < gridButtons.length; i++) {
+            var btn = gridButtons[i];
+            if (parseInt(btn.getAttribute('data-cols')) === savedCols) btn.classList.add('active');
 
             btn.addEventListener('click', function () {
-                gridButtons.forEach(function (b) {
-                    b.classList.remove('active');
-                });
-                btn.classList.add('active');
-                var cols = parseInt(btn.dataset.cols);
+                for (var j = 0; j < gridButtons.length; j++) {
+                    gridButtons[j].classList.remove('active');
+                }
+                this.classList.add('active');
+                var cols = parseInt(this.getAttribute('data-cols'));
                 localStorage.setItem('gridCols', cols);
                 applyGrid(cols);
             });
-        });
+        }
 
         function applyGrid(cols) {
             presetsContainer.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
-            presetsContainer.dataset.cols = cols;
+            presetsContainer.setAttribute('data-cols', cols);
         }
 
         window.addEventListener('resize', function () {
@@ -380,10 +434,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function switchPack(packType) {
         if (currentPack === packType) return;
-        document.querySelectorAll('.preset video').forEach(function (v) {
-            v.pause();
-            v.currentTime = 0;
-        });
+        var allVideos = document.querySelectorAll('.preset video');
+        for (var i = 0; i < allVideos.length; i++) {
+            allVideos[i].pause();
+            allVideos[i].currentTime = 0;
+        }
         currentPack = packType;
         localStorage.setItem('currentPack', packType);
         selectedPreset = null;
@@ -411,7 +466,7 @@ document.addEventListener('DOMContentLoaded', function () {
         var isTextPreset = selectedPreset.startsWith('text_');
         var script =
             '(function() { try { var presetPath = "' +
-            csInterface.getSystemPath(SystemPath.EXTENSION) +
+            csInterface.getSystemPath(csInterface.systemPath.EXTENSION) +
             '/presets/' +
             selectedPreset +
             '"; var presetFile = new File(presetPath); if (!presetFile.exists) return "Error: Preset file not found"; var activeItem = app.project.activeItem; if (!activeItem || !(activeItem instanceof CompItem)) return "Error: No active composition"; var selectedLayers = activeItem.selectedLayers; if (selectedLayers.length === 0) return "Error: Please select at least one layer"; var successCount = 0; for (var i = 0; i < selectedLayers.length; i++) { var layer = selectedLayers[i]; ' +
@@ -454,70 +509,57 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function setupEventListeners() {
-        if (autoPlayCheckbox) {
-            autoPlayCheckbox.addEventListener('change', manageVideos);
-        }
-        if (prevPageBtn) {
+        if (autoPlayCheckbox) autoPlayCheckbox.addEventListener('change', manageVideos);
+        if (prevPageBtn)
             prevPageBtn.addEventListener('click', function () {
                 if (currentPage > 1) showPage(currentPage - 1);
             });
-        }
-        if (nextPageBtn) {
+        if (nextPageBtn)
             nextPageBtn.addEventListener('click', function () {
                 if (currentPage < totalPages) showPage(currentPage + 1);
             });
-        }
-        if (refreshBtn) {
+        if (refreshBtn)
             refreshBtn.addEventListener('click', function () {
                 selectedPreset = null;
-                presets.forEach(function (p) {
-                    p.classList.remove('selected');
-                });
+                for (var i = 0; i < presets.length; i++) {
+                    presets[i].classList.remove('selected');
+                }
                 if (status) status.textContent = 'No items selected';
                 showPage(1);
             });
-        }
-        if (applyBtn) {
-            applyBtn.addEventListener('click', applyPreset);
-        }
-        if (allTab) {
+        if (applyBtn) applyBtn.addEventListener('click', applyPreset);
+        if (allTab)
             allTab.addEventListener('click', function () {
                 switchTab('all');
             });
-        }
-        if (favoritesTab) {
+        if (favoritesTab)
             favoritesTab.addEventListener('click', function () {
                 switchTab('favorites');
             });
-        }
-        if (textPackBtn) {
+        if (textPackBtn)
             textPackBtn.addEventListener('click', function (e) {
                 e.preventDefault();
                 switchPack('text');
-                var dropdown = document.querySelector('.pack-dropdown-content');
-                if (dropdown) dropdown.classList.remove('show');
+                hideDropdown();
             });
-        }
-        if (effectPackBtn) {
+        if (effectPackBtn)
             effectPackBtn.addEventListener('click', function (e) {
                 e.preventDefault();
                 switchPack('effect');
-                var dropdown = document.querySelector('.pack-dropdown-content');
-                if (dropdown) dropdown.classList.remove('show');
+                hideDropdown();
             });
-        }
         var packBtn = document.querySelector('.pack-btn');
-        if (packBtn) {
+        if (packBtn)
             packBtn.addEventListener('click', function (e) {
                 e.stopPropagation();
                 var dropdown = document.querySelector('.pack-dropdown-content');
                 if (dropdown) dropdown.classList.toggle('show');
             });
-        }
-        window.addEventListener('click', function () {
+        window.addEventListener('click', hideDropdown);
+
+        function hideDropdown() {
             var dropdown = document.querySelector('.pack-dropdown-content');
             if (dropdown) dropdown.classList.remove('show');
-        });
+        }
     }
-    // -------------------- END UI LOGIKA --------------------
 });
