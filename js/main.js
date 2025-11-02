@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // ----------------------- UPDATE CONFIG -----------------------
     const REMOTE_BASE = 'https://darkpanel-coral.vercel.app';
     const UPDATE_URL = REMOTE_BASE + '/update.json';
-    const BUNDLE_VERSION = '1.7'; // CSXS/manifest.xml dagisi bilan mos
+    const BUNDLE_VERSION = '1.3'; // CSXS/manifest.xml dagisi bilan mos
     const LS_INSTALLED = 'darkpanel_installed_version'; // localStorage kalit
     const SUPPORTED_TEXT_FILES = ['index.html', 'css/style.css', 'js/main.js', 'CSXS/manifest.xml'];
     // -------------------------------------------------------------
@@ -429,28 +429,54 @@ document.addEventListener('DOMContentLoaded', function () {
         const isTextPreset = selectedPreset.startsWith('text_');
         const remotePresetUrl = `${REMOTE_BASE}/presets/${selectedPreset}`;
 
-        // 🔥 1. Vercel’dan .ffx faylni yuklab olish
+        // 1) .ffx faylni Vercel'dan yuklab olamiz
         fetch(remotePresetUrl)
             .then((res) => {
                 if (!res.ok) throw new Error('Preset not found on server');
                 return res.blob();
             })
             .then((blob) => {
+                // DataURL -> base64
                 const reader = new FileReader();
                 reader.onload = () => {
-                    const base64data = reader.result.split(',')[1];
+                    // "data:application/octet-stream;base64,AAAA..." -> faqat base64 qismi
+                    const base64data = (reader.result || '')
+                        .toString()
+                        .split(',')[1]
+                        .replace(/\s/g, '');
 
-                    // 🔥 2. JSX skript — blobni temp.ffx sifatida lokalga yozish va qo‘llash
+                    // 2) JSX: base64 ni custom decoder bilan BINARY qilib temp.ffx ga yozish va apply qilish
                     const jsxScript = `
-                    (function() {
+                    (function () {
                         try {
+                            // --- Base64 decoder (ExtendScript ichida atob yo'q) ---
+                            function b64decode(b64) {
+                                var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+                                var out = "";
+                                var buffer = 0, bits = 0, c;
+                                for (var i = 0; i < b64.length; i++) {
+                                    c = b64.charAt(i);
+                                    if (c === '=') break;
+                                    var idx = chars.indexOf(c);
+                                    if (idx === -1) continue; // whitespace/newline bo'lsa skip
+                                    buffer = (buffer << 6) | idx;
+                                    bits += 6;
+                                    if (bits >= 8) {
+                                        bits -= 8;
+                                        out += String.fromCharCode((buffer >> bits) & 0xFF);
+                                    }
+                                }
+                                return out;
+                            }
+
                             var presetPath = '${csInterface.getSystemPath(
                                 SystemPath.EXTENSION
                             )}/temp.ffx';
                             var f = new File(presetPath);
+                            var bin = b64decode('${base64data}');
                             f.encoding = 'BINARY';
-                            f.open('w');
-                            f.write(atob('${base64data}'));
+                            if (!f.open('w')) return 'Error: cannot open temp file';
+                            f.write(bin);
                             f.close();
 
                             var activeItem = app.project.activeItem;
@@ -463,25 +489,24 @@ document.addEventListener('DOMContentLoaded', function () {
                                 var layer = selectedLayers[i];
                                 ${
                                     isTextPreset
-                                        ? `if (!(layer instanceof TextLayer)) continue;`
-                                        : `if (!layer.property("ADBE Effect Parade")) continue;`
+                                        ? 'if (!(layer instanceof TextLayer)) continue;'
+                                        : "if (!layer.property('ADBE Effect Parade')) continue;"
                                 }
                                 layer.applyPreset(f);
                                 successCount++;
                             }
-                            // Temp faylni o‘chirib tashlaymiz
-                            try { f.remove(); } catch(e){}
+
+                            try { f.remove(); } catch (e) {}
                             return 'Success:' + successCount;
-                        } catch(err) {
+                        } catch (err) {
                             return 'Error: ' + err.toString();
                         }
                     })();
                 `;
 
-                    // 🔥 3. JSX kodni AE ichida ishga tushirish
                     csInterface.evalScript(jsxScript, function (result) {
-                        if (result && result.startsWith('Success:')) {
-                            const count = result.split(':')[1];
+                        if (result && result.indexOf('Success:') === 0) {
+                            var count = result.split(':')[1];
                             showCustomAlert('✅ Applied to ' + count + ' layer(s)', true);
                         } else {
                             showCustomAlert(result || '❌ Unknown error', false);
