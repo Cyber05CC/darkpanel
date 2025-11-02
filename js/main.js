@@ -4,8 +4,9 @@ document.addEventListener('DOMContentLoaded', function () {
     // ----------------------- UPDATE CONFIG -----------------------
     const REMOTE_BASE = 'https://darkpanel-coral.vercel.app';
     const UPDATE_URL = REMOTE_BASE + '/update.json';
-    const BUNDLE_VERSION = '1.5';
+    const BUNDLE_VERSION = '1.7'; // CSXS/manifest.xml dagisi bilan mos bo'lsin
     const LS_INSTALLED = 'darkpanel_installed_version';
+    const LS_MODE = 'darkpanel_update_mode'; // 'write' | 'overlay'
     const SUPPORTED_TEXT_FILES = ['index.html', 'css/style.css', 'js/main.js', 'CSXS/manifest.xml'];
     // -------------------------------------------------------------
 
@@ -33,7 +34,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // ----------------------- BOOT -----------------------
     init();
-    safeCheckForUpdates();
+    safeCheckForUpdates(); // sahifa ochilganda tekshir
     // ---------------------------------------------------
 
     // ===================== UPDATE SYSTEM =====================
@@ -42,12 +43,20 @@ document.addEventListener('DOMContentLoaded', function () {
             const res = await fetch(UPDATE_URL + '?t=' + Date.now());
             if (!res.ok) throw new Error('update.json not found');
             const remote = await res.json();
+
             const installed = localStorage.getItem(LS_INSTALLED) || BUNDLE_VERSION;
+            const mode = localStorage.getItem(LS_MODE) || 'write';
+
+            // Agar oldin overlay bo'lsa — versiya teng bo'lsa ham UI ni har doim qayta qo'llaymiz
+            if (mode === 'overlay' && remote && remote.files) {
+                console.log('🔁 Re-applying overlay on startup…');
+                await applyRemoteOverlay(remote.files, /*reinit=*/ true);
+            }
 
             if (remote?.version && remote.version !== installed) {
                 showUpdatePopup(remote.version, remote.files);
             } else {
-                console.log('✅ Up to date:', installed);
+                console.log('✅ Up to date:', installed, `(mode=${mode})`);
             }
         } catch (e) {
             console.log('Update check skipped:', e);
@@ -79,14 +88,17 @@ document.addEventListener('DOMContentLoaded', function () {
                 const ok = await tryWriteToExtension(files);
                 if (ok) {
                     localStorage.setItem(LS_INSTALLED, version);
+                    localStorage.setItem(LS_MODE, 'write');
                     setStatus('✅ Update complete. Reloading…');
-                    setTimeout(() => location.reload(), 1000);
+                    setTimeout(() => location.reload(), 900);
                     return;
                 }
 
-                await applyRemoteOverlay(files);
+                // Write muvaffaqiyatsiz bo'lsa — overlay rejimi
+                await applyRemoteOverlay(files, /*reinit=*/ true);
                 localStorage.setItem(LS_INSTALLED, version);
-                setStatus('✅ Update applied (overlay). Restart AE to fully apply.');
+                localStorage.setItem(LS_MODE, 'overlay');
+                setStatus('✅ Update applied (overlay). Will persist across restarts.');
             } catch (err) {
                 console.error(err);
                 setStatus('❌ Update failed: ' + err.message);
@@ -98,35 +110,46 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
+    // --- Asosiy muammo yechimi: JS matnini xavfsiz uzatish (chunk + URI-encoding) ---
     async function tryWriteToExtension(files) {
         const extRoot = csInterface.getSystemPath(SystemPath.EXTENSION);
 
-        function toBase64(str) {
-            return btoa(unescape(encodeURIComponent(str)));
-        }
-
         const ensureFoldersScript = (fullPath) => `
-        (function(){
-            function ensureFolder(path){
-                var parts = path.split(/[\\\\/]/);
-                var acc = parts.shift();
-                while(parts.length){
-                    acc += "/" + parts.shift();
-                    var f = new Folder(acc);
-                    if(!f.exists){ try{ f.create(); }catch(e){ return "ERR:"+e; } }
+            (function(){
+                function ensureFolder(path){
+                    var parts = path.split(/[\\\\/]/);
+                    var acc = parts.shift();
+                    while(parts.length){
+                        acc += "/" + parts.shift();
+                        var f = new Folder(acc);
+                        if(!f.exists){ try{ f.create(); }catch(e){ return "ERR:"+e; } }
+                    }
+                    return "OK";
                 }
-                return "OK";
+                return ensureFolder("${fullPath.replace(/"/g, '\\"')}");
+            })();
+        `;
+
+        // encoded matnni 20k bo'limga bo'lamiz (CEP argument limitlarini chetlash uchun)
+        function encodeAndChunk(str, size) {
+            const enc = encodeURIComponent(str);
+            const chunks = [];
+            for (let i = 0; i < enc.length; i += size) {
+                chunks.push(enc.slice(i, i + size));
             }
-            return ensureFolder("${fullPath.replace(/"/g, '\\"')}");
-        })();
-    `;
+            return chunks;
+        }
 
         for (const [rel, info] of Object.entries(files || {})) {
             if (!SUPPORTED_TEXT_FILES.includes(rel)) continue;
+
             const url = info.url + '?t=' + Date.now();
             const text = await (await fetch(url)).text();
-            const base64 = toBase64(text);
+            const parts = encodeAndChunk(text, 20000); // 20k symbol chunks
+            const partsLiteral =
+                '[' + parts.map((p) => `"${p.replace(/"/g, '\\"')}"`).join(',') + ']';
 
+            // papkani yaratish
             const dir = rel.split('/').slice(0, -1).join('/');
             if (dir) {
                 const targetDir = `${extRoot}/${dir}`;
@@ -135,34 +158,44 @@ document.addEventListener('DOMContentLoaded', function () {
                         resolve(res === 'OK')
                     );
                 });
-                if (!ok) return false;
+                if (!ok) {
+                    console.warn('⚠️ ensureFolder failed:', dir);
+                    return false;
+                }
             }
 
             const targetFile = `${extRoot}/${rel}`;
             const writeScript = `
-            (function(){
-                try{
-                    var f = new File("${targetFile.replace(/"/g, '\\"')}");
-                    f.encoding = "UTF-8";
-                    f.open("w");
-                    var b64 = "${base64}";
-                    var decoded = decodeURIComponent(escape(atob(b64)));
-                    f.write(decoded);
-                    f.close();
-                    return "OK";
-                }catch(e){ return "ERR:"+e.toString(); }
-            })();
-        `;
+                (function(){
+                    try{
+                        var f = new File("${targetFile.replace(/"/g, '\\"')}");
+                        f.encoding = "UTF-8";
+                        f.open("w");
+                        var parts = ${partsLiteral};
+                        var joined = parts.join("");
+                        var decoded = decodeURIComponent(joined);
+                        f.write(decoded);
+                        f.close();
+                        return "OK";
+                    }catch(e){ return "ERR:"+e.toString(); }
+                })();
+            `;
+
             const wrote = await new Promise((resolve) => {
                 csInterface.evalScript(writeScript, (res) => resolve(res === 'OK'));
             });
-            if (!wrote) return false;
+            if (!wrote) {
+                console.warn('⚠️ write failed for', rel);
+                return false;
+            }
         }
+        console.log('📝 write-mode OK (files written into extension folder)');
         return true;
     }
 
-    async function applyRemoteOverlay(files) {
-        // CSS yangilanishi
+    // Overlay: CSS + HTML ni sahifa ichida yangilash va UI’ni qayta init qilish
+    async function applyRemoteOverlay(files, reinit) {
+        // 1) CSS hot-swap
         if (files['css/style.css']) {
             const id = 'overlay-style';
             let link = document.getElementById(id);
@@ -175,7 +208,7 @@ document.addEventListener('DOMContentLoaded', function () {
             link.href = files['css/style.css'].url + '?t=' + Date.now();
         }
 
-        // HTML (UI) yangilanishi — endi to‘liq sahifani hot-reload qiladi
+        // 2) HTML main qismini almashtirish
         if (files['index.html']) {
             try {
                 const html = await (
@@ -190,16 +223,14 @@ document.addEventListener('DOMContentLoaded', function () {
                     curMain.innerHTML = newMain.innerHTML;
                     console.log('✅ UI updated (overlay)');
                 }
-
-                // yangi JS-ni ham hot-reload
-                if (files['js/main.js']) {
-                    const script = document.createElement('script');
-                    script.src = files['js/main.js'].url + '?t=' + Date.now();
-                    document.body.appendChild(script);
-                }
             } catch (e) {
-                console.warn('Overlay HTML swap skipped:', e);
+                console.log('Overlay HTML swap skipped:', e);
             }
+        }
+
+        // 3) UI’ni qayta ishga tushirish — shu cardlar yo'qolmasligi uchun SHART
+        if (reinit) {
+            reInitUI();
         }
     }
     // =================== END UPDATE SYSTEM ===================
@@ -212,6 +243,21 @@ document.addEventListener('DOMContentLoaded', function () {
         setupPresetSelection();
         setupGridControl();
         if (status) status.textContent = 'No items selected';
+    }
+
+    // Overlaydan keyin UI’ni qayta bog‘lash
+    function reInitUI() {
+        // eski listenerlarni tozalash shart emas — yangi DOM eski listenerlarni ko‘rmaydi
+        // shunchaki boshidan init qilamiz
+        selectedPreset = null;
+        currentPage = 1;
+        updatePackUI();
+        createPresets();
+        setupEventListeners();
+        setupPresetSelection();
+        setupGridControl();
+        if (status) status.textContent = 'No items selected';
+        console.log('🔁 UI re-initialized after overlay');
     }
 
     function updatePackUI() {
@@ -430,10 +476,10 @@ document.addEventListener('DOMContentLoaded', function () {
         `;
 
         csInterface.evalScript(script, function (result) {
-            if (result.startsWith('Success:')) {
+            if (result && result.startsWith('Success:')) {
                 showCustomAlert('Applied to ' + result.split(':')[1] + ' layer(s)', true);
             } else {
-                showCustomAlert(result, false);
+                showCustomAlert(result || 'Unknown error', false);
             }
         });
     }
@@ -497,4 +543,5 @@ document.addEventListener('DOMContentLoaded', function () {
             document.querySelector('.pack-dropdown-content')?.classList.remove('show')
         );
     }
+    // -------------------- END UI LOGIKA --------------------
 });
