@@ -101,37 +101,31 @@ document.addEventListener('DOMContentLoaded', function () {
     async function tryWriteToExtension(files) {
         const extRoot = csInterface.getSystemPath(SystemPath.EXTENSION);
 
-        // JSON.stringify qilingan textni JSX uchun xavfsiz qiladi
-        function escapeJSX(text) {
-            return text
-                .replace(/\\/g, '\\\\')
-                .replace(/'/g, "\\'")
-                .replace(/"/g, '\\"')
-                .replace(/\r/g, '\\r')
-                .replace(/\n/g, '\\n');
+        function toBase64(str) {
+            return btoa(unescape(encodeURIComponent(str)));
         }
 
         const ensureFoldersScript = (fullPath) => `
-            (function(){
-                function ensureFolder(path){
-                    var parts = path.split(/[\\\\/]/);
-                    var acc = parts.shift();
-                    while(parts.length){
-                        acc += "/" + parts.shift();
-                        var f = new Folder(acc);
-                        if(!f.exists){ try{ f.create(); }catch(e){ return "ERR:"+e; } }
-                    }
-                    return "OK";
+        (function(){
+            function ensureFolder(path){
+                var parts = path.split(/[\\\\/]/);
+                var acc = parts.shift();
+                while(parts.length){
+                    acc += "/" + parts.shift();
+                    var f = new Folder(acc);
+                    if(!f.exists){ try{ f.create(); }catch(e){ return "ERR:"+e; } }
                 }
-                return ensureFolder("${fullPath.replace(/"/g, '\\"')}");
-            })();
-        `;
+                return "OK";
+            }
+            return ensureFolder("${fullPath.replace(/"/g, '\\"')}");
+        })();
+    `;
 
         for (const [rel, info] of Object.entries(files || {})) {
             if (!SUPPORTED_TEXT_FILES.includes(rel)) continue;
             const url = info.url + '?t=' + Date.now();
             const text = await (await fetch(url)).text();
-            const safeText = escapeJSX(text);
+            const base64 = toBase64(text);
 
             const dir = rel.split('/').slice(0, -1).join('/');
             if (dir) {
@@ -146,17 +140,19 @@ document.addEventListener('DOMContentLoaded', function () {
 
             const targetFile = `${extRoot}/${rel}`;
             const writeScript = `
-                (function(){
-                    try{
-                        var f = new File("${targetFile.replace(/"/g, '\\"')}");
-                        f.encoding = "UTF-8";
-                        f.open("w");
-                        f.write("${safeText}");
-                        f.close();
-                        return "OK";
-                    }catch(e){ return "ERR:"+e.toString(); }
-                })();
-            `;
+            (function(){
+                try{
+                    var f = new File("${targetFile.replace(/"/g, '\\"')}");
+                    f.encoding = "UTF-8";
+                    f.open("w");
+                    var b64 = "${base64}";
+                    var decoded = decodeURIComponent(escape(atob(b64)));
+                    f.write(decoded);
+                    f.close();
+                    return "OK";
+                }catch(e){ return "ERR:"+e.toString(); }
+            })();
+        `;
             const wrote = await new Promise((resolve) => {
                 csInterface.evalScript(writeScript, (res) => resolve(res === 'OK'));
             });
