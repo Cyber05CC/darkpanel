@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // ----------------------- UPDATE CONFIG -----------------------
     const REMOTE_BASE = 'https://darkpanel-coral.vercel.app';
     const UPDATE_URL = REMOTE_BASE + '/update.json';
-    const BUNDLE_VERSION = '1.4'; // CSXS/manifest.xml dagisi bilan mos
+    const BUNDLE_VERSION = '1.3'; // CSXS/manifest.xml dagisi bilan mos
     const LS_INSTALLED = 'darkpanel_installed_version'; // localStorage kalit
     const SUPPORTED_TEXT_FILES = ['index.html', 'css/style.css', 'js/main.js', 'CSXS/manifest.xml'];
     // -------------------------------------------------------------

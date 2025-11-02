@@ -481,12 +481,14 @@ body {
     background: #ff5252;
     color: #fff;
     font-size: 14px;
-    padding: 10px 18px;
+    padding: 18px 18px;
     border-radius: 10px;
     opacity: 0;
     z-index: 99999;
     box-shadow: 0 3px 12px rgba(0, 0, 0, 0.3);
     transition: all 0.3s ease;
+    width: 15rem;
+    text-align: center;
 }
 .net-alert.visible {
     transform: translateX(-50%) translateY(0);
