@@ -37,7 +37,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // 🔹 UPDATE SYSTEM
     async function checkForUpdates() {
-        const currentVersion = '1.5'; // manifest.xml bilan bir xil bo‘lishi kerak
+        const currentVersion = '1.6'; // manifest.xml bilan bir xil bo‘lishi kerak
         const updateURL = 'https://darkpanel-coral.vercel.app/update.json?t=' + Date.now();
 
         try {
