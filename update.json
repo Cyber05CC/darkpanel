@@ -1,17 +1,21 @@
 {
-    "version": "1.4",
+    "version": "1.5",
     "files": {
         "index.html": {
             "hash": "eb4b2039fed4af9661cea1b01bc7184a",
             "url": "https://darkpanel-coral.vercel.app/index.html"
         },
+        "css/style.css": {
+            "hash": "0",
+            "url": "https://darkpanel-coral.vercel.app/css/style.css"
+        },
         "js/main.js": {
-            "hash": "8e23c29a91a013f1",
+            "hash": "0",
             "url": "https://darkpanel-coral.vercel.app/js/main.js"
         },
-        "css/style.css": {
-            "hash": "61f6297f841175d64419507cde2eb524",
-            "url": "https://darkpanel-coral.vercel.app/css/style.css"
+        "CSXS/manifest.xml": {
+            "hash": "0",
+            "url": "https://darkpanel-coral.vercel.app/CSXS/manifest.xml"
         }
     }
 }

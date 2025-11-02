@@ -14,6 +14,9 @@ document.addEventListener('DOMContentLoaded', function () {
     const textPackBtn = document.getElementById('textPackBtn');
     const effectPackBtn = document.getElementById('effectPackBtn');
 
+    // 🔹 Check for updates on load
+    checkForUpdates();
+
     const itemsPerPage = 10;
     let currentPage = 1;
     let totalPages = 1;
@@ -30,6 +33,75 @@ document.addEventListener('DOMContentLoaded', function () {
         setupPresetSelection();
         setupGridControl();
         status.textContent = 'No items selected';
+    }
+
+    // 🔹 UPDATE SYSTEM
+    async function checkForUpdates() {
+        const currentVersion = '1.5'; // manifest.xml bilan bir xil bo‘lishi kerak
+        const updateURL = 'https://darkpanel-coral.vercel.app/update.json?t=' + Date.now();
+
+        try {
+            const res = await fetch(updateURL);
+            if (!res.ok) throw new Error('update.json not found');
+            const data = await res.json();
+
+            console.log('Checking updates...');
+            console.log('Local version:', currentVersion, '| Remote:', data.version);
+
+            if (data.version !== currentVersion) {
+                showUpdatePopup(data.version, data.files);
+            } else {
+                console.log('✅ darkPanel is up-to-date');
+            }
+        } catch (err) {
+            console.error('❌ Update check failed:', err);
+        }
+    }
+
+    function showUpdatePopup(version, files) {
+        const popup = document.createElement('div');
+        popup.className = 'custom-alert visible';
+        popup.innerHTML = `
+            <div class="alert-content">
+                <div class="alert-message">🆕 New update available (v${version})</div>
+                <button id="updateNow" class="alert-close">Update Now</button>
+            </div>
+        `;
+        document.body.appendChild(popup);
+
+        document.getElementById('updateNow').addEventListener('click', () => {
+            popup.querySelector('.alert-message').textContent = '⏳ Updating...';
+            downloadFiles(files, popup);
+        });
+    }
+
+    async function downloadFiles(files, popup) {
+        for (const [path, file] of Object.entries(files)) {
+            try {
+                const res = await fetch(file.url + '?t=' + Date.now());
+                const content = await res.text();
+
+                const saveScript = `
+                    (function() {
+                        var f = new File("${csInterface.getSystemPath(
+                            SystemPath.EXTENSION
+                        )}/${path}");
+                        f.encoding = "UTF-8";
+                        f.open("w");
+                        f.write(${JSON.stringify(content)});
+                        f.close();
+                        return "Updated: ${path}";
+                    })();
+                `;
+                await new Promise((resolve) => csInterface.evalScript(saveScript, () => resolve()));
+                console.log('✅ Updated:', path);
+            } catch (err) {
+                console.error('❌ Failed to update:', path, err);
+            }
+        }
+
+        popup.querySelector('.alert-message').textContent =
+            '✅ Update complete! Restart After Effects.';
     }
 
     // 🔹 PACK UI
@@ -169,13 +241,11 @@ document.addEventListener('DOMContentLoaded', function () {
     function setupGridControl() {
         const gridButtons = document.querySelectorAll('.grid-btn');
         const presetsContainer = document.querySelector('.presets');
-
         let savedCols = parseInt(localStorage.getItem('gridCols')) || 2;
         applyGrid(savedCols);
 
         gridButtons.forEach((btn) => {
             if (parseInt(btn.dataset.cols) === savedCols) btn.classList.add('active');
-
             btn.addEventListener('click', () => {
                 gridButtons.forEach((b) => b.classList.remove('active'));
                 btn.classList.add('active');
@@ -189,46 +259,9 @@ document.addEventListener('DOMContentLoaded', function () {
             presetsContainer.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
             presetsContainer.dataset.cols = cols;
         }
-
-        window.addEventListener('resize', () => {
-            if (window.innerWidth <= 420) {
-                presetsContainer.style.gridTemplateColumns = 'repeat(1, 1fr)';
-            } else if (window.innerWidth <= 640) {
-                presetsContainer.style.gridTemplateColumns = 'repeat(2, 1fr)';
-            } else {
-                const cols = parseInt(localStorage.getItem('gridCols')) || 2;
-                presetsContainer.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-            }
-        });
     }
 
-    // 🔹 PACK SWITCH
-    function switchPack(packType) {
-        if (currentPack === packType) return;
-        document.querySelectorAll('.preset video').forEach((v) => {
-            v.pause();
-            v.currentTime = 0;
-        });
-        currentPack = packType;
-        localStorage.setItem('currentPack', packType);
-        selectedPreset = null;
-        status.textContent = 'No items selected';
-        updatePackUI();
-        createPresets();
-    }
-
-    // 🔹 TABS
-    function switchTab(tabType) {
-        if (currentView === tabType) return;
-        currentView = tabType;
-        allTab.classList.toggle('active', tabType === 'all');
-        favoritesTab.classList.toggle('active', tabType === 'favorites');
-        selectedPreset = null;
-        status.textContent = 'No items selected';
-        showPage(1);
-    }
-
-    // 🔹 APPLY PRESET (❗To‘liq qismi)
+    // 🔹 APPLY PRESET
     function applyPreset() {
         if (!selectedPreset) {
             showCustomAlert('Please select a preset first!', false);
@@ -243,13 +276,11 @@ document.addEventListener('DOMContentLoaded', function () {
                         SystemPath.EXTENSION
                     )}/presets/${selectedPreset}';
                     var presetFile = new File(presetPath);
-                    
-                    if (!presetFile.exists) return "Error: Preset file not found";
+                    if (!presetFile.exists) return "Error: Preset not found";
                     var activeItem = app.project.activeItem;
-                    if (!activeItem || !(activeItem instanceof CompItem)) return "Error: No active composition";
+                    if (!activeItem || !(activeItem instanceof CompItem)) return "Error: No composition";
                     var selectedLayers = activeItem.selectedLayers;
-                    if (selectedLayers.length === 0) return "Error: Please select at least one layer";
-                    
+                    if (selectedLayers.length === 0) return "Error: Select a layer first";
                     var successCount = 0;
                     for (var i = 0; i < selectedLayers.length; i++) {
                         var layer = selectedLayers[i];
@@ -262,9 +293,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         successCount++;
                     }
                     return "Success:" + successCount;
-                } catch(err) {
-                    return "Error: " + err.toString();
-                }
+                } catch(err) { return "Error: " + err.toString(); }
             })();
         `;
 
@@ -303,7 +332,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // 🔹 EVENT LISTENERS
+    // 🔹 EVENTS
     function setupEventListeners() {
         autoPlayCheckbox.addEventListener('change', manageVideos);
         prevPageBtn.addEventListener('click', () => currentPage > 1 && showPage(currentPage - 1));
@@ -337,80 +366,6 @@ document.addEventListener('DOMContentLoaded', function () {
         window.addEventListener('click', () =>
             document.querySelector('.pack-dropdown-content').classList.remove('show')
         );
-    }
-
-    // 🧩 SMART UPDATE SYSTEM
-    async function checkForSmartUpdates() {
-        try {
-            const currentVersion = '1.3'; // bu senga mos ravishda o‘zgartiriladi
-            const updateUrl = 'https://darkpanel-coral.vercel.app/update.json?t=' + Date.now();
-
-            const res = await fetch(updateUrl);
-            if (!res.ok) throw new Error('update.json topilmadi');
-            const remote = await res.json();
-
-            // Versiyani solishtiramiz
-            if (remote.version !== currentVersion) {
-                console.log(`🆕 Yangi versiya topildi: ${remote.version}`);
-                showUpdateAlert(remote.version, remote.files);
-            } else {
-                console.log('✅ darkPanel yangilangan holatda');
-            }
-        } catch (err) {
-            console.error('❌ Update check xatosi:', err);
-        }
-    }
-
-    // 🧩 Custom alert chiqadi
-    function showUpdateAlert(version, files) {
-        const alert = document.createElement('div');
-        alert.className = 'custom-alert visible';
-        alert.innerHTML = `
-        <div class="alert-content">
-            <div class="alert-message">Yangi versiya (${version}) mavjud!</div>
-            <button id="updateNow" class="alert-close">Update Now</button>
-        </div>
-    `;
-        document.body.appendChild(alert);
-
-        document.getElementById('updateNow').addEventListener('click', async () => {
-            alert.querySelector('.alert-message').textContent = 'Updating...';
-            await downloadAndReplaceFiles(files);
-            alert.querySelector('.alert-message').textContent =
-                '✅ Update completed! Please restart AE.';
-        });
-    }
-
-    // 🧩 Fayllarni yuklab joylash
-    async function downloadAndReplaceFiles(files) {
-        const csInterface = new CSInterface();
-
-        for (const [path, info] of Object.entries(files)) {
-            try {
-                const response = await fetch(info.url + '?t=' + Date.now());
-                const content = await response.text();
-
-                const localPath = `${csInterface.getSystemPath(SystemPath.EXTENSION)}/${path}`;
-                const saveScript = `
-                (function() {
-                    var f = new File("${localPath}");
-                    f.encoding = "UTF-8";
-                    f.open("w");
-                    f.write(${JSON.stringify(content)});
-                    f.close();
-                    return "Saved: ${path}";
-                })();
-            `;
-                await new Promise((resolve) =>
-                    csInterface.evalScript(saveScript, (r) => {
-                        console.log(r);
-                        resolve();
-                    })
-                );
-            } catch (err) {
-                console.error(`❌ ${path} yuklab bo‘lmadi:`, err);
-            }
-        }
     }
 
     init();
