@@ -1,12 +1,11 @@
-window.onload = function () {
+document.addEventListener('DOMContentLoaded', function () {
     const csInterface = new CSInterface();
 
     // ----------------------- UPDATE CONFIG -----------------------
     const REMOTE_BASE = 'https://darkpanel-coral.vercel.app';
     const UPDATE_URL = REMOTE_BASE + '/update.json';
-    const BUNDLE_VERSION = '1.7'; // CSXS/manifest.xml bilan mos bo'lsin
-    const LS_INSTALLED = 'darkpanel_installed_version';
-    const LS_MODE = 'darkpanel_update_mode'; // 'write' | 'overlay'
+    const BUNDLE_VERSION = '1.3'; // CSXS/manifest.xml dagisi bilan mos
+    const LS_INSTALLED = 'darkpanel_installed_version'; // localStorage kalit
     const SUPPORTED_TEXT_FILES = ['index.html', 'css/style.css', 'js/main.js', 'CSXS/manifest.xml'];
     // -------------------------------------------------------------
 
@@ -45,18 +44,12 @@ window.onload = function () {
             const remote = await res.json();
 
             const installed = localStorage.getItem(LS_INSTALLED) || BUNDLE_VERSION;
-            const mode = localStorage.getItem(LS_MODE) || 'write';
 
-            // Oldin overlay bo'lgan bo'lsa — restartda ham UI ni qayta qo'llaymiz
-            if (mode === 'overlay' && remote && remote.files) {
-                console.log('🔁 Re-applying overlay on startup…');
-                await applyRemoteOverlay(remote.files, /*reinit=*/ true);
-            }
-
+            // Agar remote versiya KATTA bo'lsa (yoki boshqa) — prompt chiqsin
             if (remote?.version && remote.version !== installed) {
                 showUpdatePopup(remote.version, remote.files);
             } else {
-                console.log('✅ Up to date:', installed, `(mode=${mode})`);
+                console.log('✅ Up to date:', installed);
             }
         } catch (e) {
             console.log('Update check skipped:', e);
@@ -80,53 +73,52 @@ window.onload = function () {
         `;
         document.body.appendChild(popup);
 
-        document.getElementById('updateLater').addEventListener('click', () => popup.remove());
+        document.getElementById('updateLater').addEventListener('click', () => {
+            popup.remove();
+        });
 
         document.getElementById('updateNow').addEventListener('click', async () => {
-            setStatus('⏳ Downloading & applying…');
+            setUpdateStatus('⏳ Downloading & applying…');
             try {
+                // 1) Avval extension papkaga yozishga urinib ko'ramiz
                 const ok = await tryWriteToExtension(files);
                 if (ok) {
+                    // muvaffaqiyat — versiyani saqlaymiz, va qayta yuklaymiz
                     localStorage.setItem(LS_INSTALLED, version);
-                    localStorage.setItem(LS_MODE, 'write');
-                    setStatus('✅ Update complete. Reloading…');
+                    setUpdateStatus('✅ Update complete. Reloading…');
                     setTimeout(() => location.reload(), 900);
                     return;
                 }
 
-                // Write muvaffaqiyatsiz bo'lsa — overlay
-                await applyRemoteOverlay(files, /*reinit=*/ true);
+                // 2) Agar yozish ruxsati bo'lmasa — remote overlay rejimi
+                await applyRemoteOverlay(files);
                 localStorage.setItem(LS_INSTALLED, version);
-                localStorage.setItem(LS_MODE, 'overlay');
-                setStatus('✅ Update applied (overlay). Will persist across restarts.');
+                setUpdateStatus('✅ Update applied (overlay). Please restart AE.');
             } catch (err) {
                 console.error(err);
-                setStatus('❌ Update failed: ' + err.message);
+                setUpdateStatus('❌ Update failed: ' + err.message);
             }
         });
 
-        function setStatus(msg) {
+        function setUpdateStatus(msg) {
             popup.querySelector('.alert-message').textContent = msg;
         }
     }
 
-    // --- Fayl yozish: Base64 + decode (AE JSX'da xato chiqmasligi uchun) ---
     async function tryWriteToExtension(files) {
+        // Faqat matnli fayllarni yozamiz (bizning ro'yxat)
+        // muvaffaqiyat bo'lsa true qaytadi
         const extRoot = csInterface.getSystemPath(SystemPath.EXTENSION);
 
-        function toBase64(str) {
-            return btoa(unescape(encodeURIComponent(str)));
-        }
-
         const ensureFoldersScript = (fullPath) => `
-            (function(){
-                function ensureFolder(path){
+            (function() {
+                function ensureFolder(path) {
                     var parts = path.split(/[\\\\/]/);
-                    var acc = parts.shift();
-                    while(parts.length){
+                    var acc = parts.shift(); // c: yoki birinchi bo'lak
+                    while (parts.length) {
                         acc += "/" + parts.shift();
                         var f = new Folder(acc);
-                        if(!f.exists){ try{ f.create(); }catch(e){ return "ERR:"+e; } }
+                        if (!f.exists) { try { f.create(); } catch(e) { return "ERR:" + e; } }
                     }
                     return "OK";
                 }
@@ -135,15 +127,15 @@ window.onload = function () {
         `;
 
         for (const [rel, info] of Object.entries(files || {})) {
-            if (!SUPPORTED_TEXT_FILES.includes(rel)) continue;
-
+            if (!SUPPORTED_TEXT_FILES.includes(rel)) continue; // faqat shu fayllar
             const url = info.url + '?t=' + Date.now();
-            const text = await (await fetch(url)).text();
-            const b64 = toBase64(text);
 
+            const text = await (await fetch(url)).text();
+
+            // papkani yaratish (agar mavjud bo'lmasa)
             const dir = rel.split('/').slice(0, -1).join('/');
             if (dir) {
-                const targetDir = `${extRoot}/${dir}`;
+                const targetDir = extRoot + '/' + dir;
                 const ok = await new Promise((resolve) => {
                     csInterface.evalScript(ensureFoldersScript(targetDir), (res) =>
                         resolve(res === 'OK')
@@ -152,33 +144,31 @@ window.onload = function () {
                 if (!ok) return false;
             }
 
+            // Faylni yozish
             const targetFile = `${extRoot}/${rel}`;
             const writeScript = `
-                (function(){
-                    try{
+                (function() {
+                    try {
                         var f = new File("${targetFile.replace(/"/g, '\\"')}");
                         f.encoding = "UTF-8";
                         f.open("w");
-                        var data = "${b64}";
-                        var decoded = decodeURIComponent(escape(atob(data)));
-                        f.write(decoded);
+                        f.write(${JSON.stringify(text)});
                         f.close();
                         return "OK";
-                    }catch(e){ return "ERR:"+e.toString(); }
+                    } catch(e) { return "ERR:" + e; }
                 })();
             `;
-
             const wrote = await new Promise((resolve) => {
                 csInterface.evalScript(writeScript, (res) => resolve(res === 'OK'));
             });
-            if (!wrote) return false;
+            if (!wrote) return false; // bitta ham yozilmasa — demak ruxsat yo'q
         }
         return true;
     }
 
-    // Overlay: CSS + HTML ni ichida yangilash + UI’ni qayta init
-    async function applyRemoteOverlay(files, reinit) {
-        // 1) CSS hot-swap
+    async function applyRemoteOverlay(files) {
+        // Yozish bo'lmasa: CSS/HTML'ni serverdan yuklab ichida qo'llaymiz
+        // 1) CSS'ni hot-swap
         if (files['css/style.css']) {
             const id = 'overlay-style';
             let link = document.getElementById(id);
@@ -191,27 +181,22 @@ window.onload = function () {
             link.href = files['css/style.css'].url + '?t=' + Date.now();
         }
 
-        // 2) HTML main qismini almashtirish
+        // 2) index.html ichidagi <main>ni yangilash (agar bor bo'lsa)
         if (files['index.html']) {
             try {
                 const html = await (
                     await fetch(files['index.html'].url + '?t=' + Date.now())
                 ).text();
-                const parser = new DOMParser();
-                const newDoc = parser.parseFromString(html, 'text/html');
-
-                const newMain = newDoc.querySelector('main');
+                // faqat <main> kontentini almashtiramiz
+                const tmp = document.createElement('div');
+                tmp.innerHTML = html;
+                const newMain = tmp.querySelector('main');
                 const curMain = document.querySelector('main');
-                if (newMain && curMain) {
-                    curMain.innerHTML = newMain.innerHTML;
-                    console.log('✅ UI updated (overlay)');
-                }
+                if (newMain && curMain) curMain.innerHTML = newMain.innerHTML;
             } catch (e) {
                 console.log('Overlay HTML swap skipped:', e);
             }
         }
-
-        if (reinit) reInitUI(); // card/eventlar qayta bog'lansin
     }
     // =================== END UPDATE SYSTEM ===================
 
@@ -223,19 +208,6 @@ window.onload = function () {
         setupPresetSelection();
         setupGridControl();
         if (status) status.textContent = 'No items selected';
-    }
-
-    // Overlaydan keyin UI’ni qayta bog‘lash
-    function reInitUI() {
-        selectedPreset = null;
-        currentPage = 1;
-        updatePackUI();
-        createPresets();
-        setupEventListeners();
-        setupPresetSelection();
-        setupGridControl();
-        if (status) status.textContent = 'No items selected';
-        console.log('🔁 UI re-initialized after overlay');
     }
 
     function updatePackUI() {
@@ -262,23 +234,15 @@ window.onload = function () {
             const preset = document.createElement('div');
             preset.className = 'preset';
             preset.dataset.file = `${currentPack}_${i}.ffx`;
-            // agar video yo'q bo'lsa ham card ko'rinsin — poster fallback:
-            const videoSrc = `./assets/videos/${currentPack}_${i}.mp4?t=${Date.now()}`;
             preset.innerHTML = `
                 <div class="preset-thumb">
-                    <video muted loop playsinline onerror="this.style.display='none'"></video>
-                    <div class="poster-fallback">Preview</div>
+                    <video muted loop playsinline>
+                        <source src="./assets/videos/${currentPack}_${i}.mp4?t=${Date.now()}" type="video/mp4" />
+                    </video>
                     <input type="checkbox" class="favorite-check" data-file="${currentPack}_${i}.ffx">
                 </div>
                 <div class="preset-name">${packType} ${i}</div>
             `;
-            // video source qo'shish (DOM yaratilib bo'lgach)
-            const vid = preset.querySelector('video');
-            const source = document.createElement('source');
-            source.type = 'video/mp4';
-            source.src = videoSrc;
-            vid.appendChild(source);
-
             presetList.appendChild(preset);
         }
 
@@ -287,7 +251,6 @@ window.onload = function () {
         setupVideoHover();
         setupPresetSelection();
         showPage(1);
-        console.log('🎴 Presets created:', presetList.children.length);
     }
 
     function setupVideoHover() {
@@ -295,18 +258,14 @@ window.onload = function () {
             const video = preset.querySelector('video');
             preset.addEventListener('mouseenter', () => {
                 if (!autoPlayCheckbox?.checked) {
-                    try {
-                        video.currentTime = 0;
-                        video.play();
-                    } catch (_e) {}
+                    video.currentTime = 0;
+                    video.play().catch(() => {});
                 }
             });
             preset.addEventListener('mouseleave', () => {
                 if (!autoPlayCheckbox?.checked) {
-                    try {
-                        video.pause();
-                        video.currentTime = 0;
-                    } catch (_e) {}
+                    video.pause();
+                    video.currentTime = 0;
                 }
             });
         });
@@ -353,15 +312,8 @@ window.onload = function () {
         );
         current.forEach((p) => {
             const v = p.querySelector('video');
-            if (autoPlayCheckbox?.checked) {
-                try {
-                    v.play();
-                } catch (_e) {}
-            } else {
-                try {
-                    v.pause();
-                } catch (_e) {}
-            }
+            if (autoPlayCheckbox?.checked) v.play().catch(() => {});
+            else v.pause();
         });
     }
 
@@ -411,15 +363,25 @@ window.onload = function () {
             presetsContainer.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
             presetsContainer.dataset.cols = cols;
         }
+
+        // TO'G'RILANGAN QISM - qavslar to'g'ri yopilgan
+        window.addEventListener('resize', function () {
+            if (window.innerWidth <= 420) {
+                presetsContainer.style.gridTemplateColumns = 'repeat(1, 1fr)';
+            } else if (window.innerWidth <= 640) {
+                presetsContainer.style.gridTemplateColumns = 'repeat(2, 1fr)';
+            } else {
+                const cols = parseInt(localStorage.getItem('gridCols')) || 2;
+                presetsContainer.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+            }
+        });
     }
 
     function switchPack(packType) {
         if (currentPack === packType) return;
         document.querySelectorAll('.preset video').forEach((v) => {
-            try {
-                v.pause();
-                v.currentTime = 0;
-            } catch (_e) {}
+            v.pause();
+            v.currentTime = 0;
         });
         currentPack = packType;
         localStorage.setItem('currentPack', packType);
@@ -476,10 +438,10 @@ window.onload = function () {
         `;
 
         csInterface.evalScript(script, function (result) {
-            if (result && result.startsWith('Success:')) {
+            if (result.startsWith('Success:')) {
                 showCustomAlert('Applied to ' + result.split(':')[1] + ' layer(s)', true);
             } else {
-                showCustomAlert(result || 'Unknown error', false);
+                showCustomAlert(result, false);
             }
         });
     }
@@ -544,4 +506,4 @@ window.onload = function () {
         );
     }
     // -------------------- END UI LOGIKA --------------------
-};
+});
