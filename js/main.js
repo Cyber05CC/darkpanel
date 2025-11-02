@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // ----------------------- UPDATE CONFIG -----------------------
     const REMOTE_BASE = 'https://darkpanel-coral.vercel.app';
     const UPDATE_URL = REMOTE_BASE + '/update.json';
-    const BUNDLE_VERSION = '1.6'; // CSXS/manifest.xml dagisi bilan mos
+    const BUNDLE_VERSION = '1.7'; // CSXS/manifest.xml dagisi bilan mos
     const LS_INSTALLED = 'darkpanel_installed_version'; // localStorage kalit
     const SUPPORTED_TEXT_FILES = ['index.html', 'css/style.css', 'js/main.js', 'CSXS/manifest.xml'];
     // -------------------------------------------------------------
@@ -427,42 +427,73 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         const isTextPreset = selectedPreset.startsWith('text_');
-        const script = `
-            (function() {
-                try {
-                    var presetPath = '${csInterface.getSystemPath(
-                        SystemPath.EXTENSION
-                    )}/presets/${selectedPreset}';
-                    var presetFile = new File(presetPath);
-                    if (!presetFile.exists) return "Error: Preset file not found";
-                    var activeItem = app.project.activeItem;
-                    if (!activeItem || !(activeItem instanceof CompItem)) return "Error: No active composition";
-                    var selectedLayers = activeItem.selectedLayers;
-                    if (selectedLayers.length === 0) return "Error: Please select at least one layer";
+        const remotePresetUrl = `${REMOTE_BASE}/presets/${selectedPreset}`;
 
-                    var successCount = 0;
-                    for (var i = 0; i < selectedLayers.length; i++) {
-                        var layer = selectedLayers[i];
-                        ${
-                            isTextPreset
-                                ? `if (!(layer instanceof TextLayer)) continue;`
-                                : `if (!layer.property("ADBE Effect Parade")) continue;`
+        // 🔥 1. Vercel’dan .ffx faylni yuklab olish
+        fetch(remotePresetUrl)
+            .then((res) => {
+                if (!res.ok) throw new Error('Preset not found on server');
+                return res.blob();
+            })
+            .then((blob) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const base64data = reader.result.split(',')[1];
+
+                    // 🔥 2. JSX skript — blobni temp.ffx sifatida lokalga yozish va qo‘llash
+                    const jsxScript = `
+                    (function() {
+                        try {
+                            var presetPath = '${csInterface.getSystemPath(
+                                SystemPath.EXTENSION
+                            )}/temp.ffx';
+                            var f = new File(presetPath);
+                            f.encoding = 'BINARY';
+                            f.open('w');
+                            f.write(atob('${base64data}'));
+                            f.close();
+
+                            var activeItem = app.project.activeItem;
+                            if (!activeItem || !(activeItem instanceof CompItem)) return 'Error: No active composition';
+                            var selectedLayers = activeItem.selectedLayers;
+                            if (selectedLayers.length === 0) return 'Error: Please select at least one layer';
+
+                            var successCount = 0;
+                            for (var i = 0; i < selectedLayers.length; i++) {
+                                var layer = selectedLayers[i];
+                                ${
+                                    isTextPreset
+                                        ? `if (!(layer instanceof TextLayer)) continue;`
+                                        : `if (!layer.property("ADBE Effect Parade")) continue;`
+                                }
+                                layer.applyPreset(f);
+                                successCount++;
+                            }
+                            // Temp faylni o‘chirib tashlaymiz
+                            try { f.remove(); } catch(e){}
+                            return 'Success:' + successCount;
+                        } catch(err) {
+                            return 'Error: ' + err.toString();
                         }
-                        layer.applyPreset(presetFile);
-                        successCount++;
-                    }
-                    return "Success:" + successCount;
-                } catch(err) { return "Error: " + err.toString(); }
-            })();
-        `;
+                    })();
+                `;
 
-        csInterface.evalScript(script, function (result) {
-            if (result.startsWith('Success:')) {
-                showCustomAlert('Applied to ' + result.split(':')[1] + ' layer(s)', true);
-            } else {
-                showCustomAlert(result, false);
-            }
-        });
+                    // 🔥 3. JSX kodni AE ichida ishga tushirish
+                    csInterface.evalScript(jsxScript, function (result) {
+                        if (result && result.startsWith('Success:')) {
+                            const count = result.split(':')[1];
+                            showCustomAlert('✅ Applied to ' + count + ' layer(s)', true);
+                        } else {
+                            showCustomAlert(result || '❌ Unknown error', false);
+                        }
+                    });
+                };
+                reader.readAsDataURL(blob);
+            })
+            .catch((err) => {
+                console.error('FFX fetch error:', err);
+                showCustomAlert('❌ Failed to fetch preset: ' + err.message, false);
+            });
     }
 
     function showCustomAlert(message, isSuccess) {

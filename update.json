@@ -1,5 +1,5 @@
 {
-    "version": "1.6",
+    "version": "1.7",
     "files": {
         "index.html": {
             "hash": "6d83f85ff8fdcca642db79eb91f85276",
@@ -10,11 +10,11 @@
             "url": "https://darkpanel-coral.vercel.app/css/style.css"
         },
         "js/main.js": {
-            "hash": "0",
+            "hash": "78d1f6418eeac627f91aa8666fb44bdb",
             "url": "https://darkpanel-coral.vercel.app/js/main.js"
         },
         "CSXS/manifest.xml": {
-            "hash": "0",
+            "hash": "5c399f545e1057c685091efb83b2821a",
             "url": "https://darkpanel-coral.vercel.app/CSXS/manifest.xml"
         }
     }
