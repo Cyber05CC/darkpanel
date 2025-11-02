@@ -1,8 +1,5 @@
 document.addEventListener('DOMContentLoaded', function () {
     const csInterface = new CSInterface();
-    const currentVersion = '1.2'; // 🔹 shu joyni manifest.xml bilan bir xil qil
-    const updateURL = 'https://darkpanel-coral.vercel.app/version.json'; // 🔹 Vercel manziling
-
     let selectedPreset = null;
     const autoPlayCheckbox = document.getElementById('autoPlay');
     const presetList = document.getElementById('presetList');
@@ -25,9 +22,8 @@ document.addEventListener('DOMContentLoaded', function () {
     let favorites = JSON.parse(localStorage.getItem('favorites')) || [];
     let presets = [];
 
-    // ===================== 🔹 INIT =====================
-    async function init() {
-        await checkForUpdates();
+    // 🔹 INIT
+    function init() {
         updatePackUI();
         createPresets();
         setupEventListeners();
@@ -36,47 +32,7 @@ document.addEventListener('DOMContentLoaded', function () {
         status.textContent = 'No items selected';
     }
 
-    // ===================== 🔹 UPDATE CHECK =====================
-    async function checkForUpdates() {
-        try {
-            const response = await fetch(updateURL, { cache: 'no-store' });
-            if (!response.ok) throw new Error('Version check failed');
-            const data = await response.json();
-
-            const remoteVersion = data.version?.trim();
-            if (!remoteVersion) return;
-
-            if (remoteVersion !== currentVersion) {
-                showUpdateAlert(remoteVersion);
-            } else {
-                console.log(`✅ darkPanel is up to date (v${currentVersion})`);
-            }
-        } catch (err) {
-            console.warn('⚠️ Update check skipped:', err.message);
-        }
-    }
-
-    function showUpdateAlert(newVersion) {
-        const alertBox = document.createElement('div');
-        alertBox.className = 'update-alert';
-        alertBox.innerHTML = `
-            <div class="update-content">
-                <h2>🚀 New Update Available!</h2>
-                <p>Your version: <b>${currentVersion}</b> → Latest: <b>${newVersion}</b></p>
-                <button id="updateNowBtn">Update Now</button>
-                <button id="laterBtn">Later</button>
-            </div>
-        `;
-        document.body.appendChild(alertBox);
-
-        document.getElementById('updateNowBtn').addEventListener('click', () => {
-            csInterface.openURLInDefaultBrowser('https://darkpanel-coral.vercel.app');
-            alertBox.remove();
-        });
-        document.getElementById('laterBtn').addEventListener('click', () => alertBox.remove());
-    }
-
-    // ===================== 🔹 PACK UI =====================
+    // 🔹 PACK UI
     function updatePackUI() {
         const packBtn = document.querySelector('.pack-btn');
         if (currentPack === 'text') {
@@ -90,7 +46,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    // ===================== 🔹 PRESETS =====================
+    // 🔹 PRESETS
     function createPresets() {
         presetList.innerHTML = '';
         const presetCount = currentPack === 'text' ? 30 : 15;
@@ -119,6 +75,7 @@ document.addEventListener('DOMContentLoaded', function () {
         setupPresetSelection();
         showPage(1);
     }
+
     // 🔹 VIDEO HOVER
     function setupVideoHover() {
         presets.forEach((preset) => {
@@ -381,6 +338,58 @@ document.addEventListener('DOMContentLoaded', function () {
             document.querySelector('.pack-dropdown-content').classList.remove('show')
         );
     }
+    // 🔹 UPDATE SYSTEM
+    async function checkForUpdates() {
+        try {
+            const currentVersion = '1.2'; // manifestdagi hozirgi versiya
+            const response = await fetch(
+                'https://darkpanel-coral.vercel.app/update.json?t=' + Date.now()
+            );
+            const data = await response.json();
+
+            if (!data.version) return;
+            if (data.version !== currentVersion) {
+                showUpdateAlert(data.version, data.changelog, data.downloadUrl);
+            }
+        } catch (err) {
+            console.log('Update check failed:', err);
+        }
+    }
+
+    function showUpdateAlert(newVersion, changelog, link) {
+        const existing = document.querySelector('.update-alert');
+        if (existing) existing.remove();
+
+        const alertBox = document.createElement('div');
+        alertBox.className = 'update-alert';
+        alertBox.innerHTML = `
+        <div class="alert-content">
+            <h3>🆕 New Update Available (v${newVersion})</h3>
+            <p>${changelog}</p>
+            <div class="alert-buttons">
+                <button class="update-now">Update Now</button>
+                <button class="later-btn">Later</button>
+            </div>
+        </div>
+    `;
+        document.body.appendChild(alertBox);
+
+        // style animatsiyasi
+        setTimeout(() => alertBox.classList.add('visible'), 10);
+
+        alertBox.querySelector('.update-now').addEventListener('click', () => {
+            const cs = new CSInterface();
+            cs.openURLInDefaultBrowser(link);
+            alertBox.remove();
+        });
+
+        alertBox.querySelector('.later-btn').addEventListener('click', () => {
+            alertBox.remove();
+        });
+    }
+
+    // 🔹 avtomatik tekshirish sahifa yuklanganda
+    checkForUpdates();
 
     init();
 });
