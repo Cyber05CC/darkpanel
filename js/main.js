@@ -30,6 +30,7 @@ document.addEventListener('DOMContentLoaded', function () {
         setupPresetSelection();
         setupGridControl();
         status.textContent = 'No items selected';
+        checkForSmartUpdates(); // 🆕 Avtomatik update tekshiruvi
     }
 
     // 🔹 PACK UI
@@ -228,7 +229,7 @@ document.addEventListener('DOMContentLoaded', function () {
         showPage(1);
     }
 
-    // 🔹 APPLY PRESET (❗To‘liq qismi)
+    // 🔹 APPLY PRESET
     function applyPreset() {
         if (!selectedPreset) {
             showCustomAlert('Please select a preset first!', false);
@@ -243,32 +244,30 @@ document.addEventListener('DOMContentLoaded', function () {
                         SystemPath.EXTENSION
                     )}/presets/${selectedPreset}';
                     var presetFile = new File(presetPath);
-                    
-                    if (!presetFile.exists) return "Error: Preset file not found";
+                    if (!presetFile.exists) return "Error: Preset not found";
                     var activeItem = app.project.activeItem;
-                    if (!activeItem || !(activeItem instanceof CompItem)) return "Error: No active composition";
+                    if (!activeItem || !(activeItem instanceof CompItem)) return "Error: No comp";
                     var selectedLayers = activeItem.selectedLayers;
-                    if (selectedLayers.length === 0) return "Error: Please select at least one layer";
-                    
-                    var successCount = 0;
+                    if (selectedLayers.length === 0) return "Error: No layer selected";
+                    var success = 0;
                     for (var i = 0; i < selectedLayers.length; i++) {
-                        var layer = selectedLayers[i];
+                        var l = selectedLayers[i];
                         ${
                             isTextPreset
-                                ? `if (!(layer instanceof TextLayer)) continue;`
-                                : `if (!layer.property("ADBE Effect Parade")) continue;`
+                                ? `if (!(l instanceof TextLayer)) continue;`
+                                : `if (!l.property("ADBE Effect Parade")) continue;`
                         }
-                        layer.applyPreset(presetFile);
-                        successCount++;
+                        l.applyPreset(presetFile);
+                        success++;
                     }
-                    return "Success:" + successCount;
+                    return "Success:" + success;
                 } catch(err) {
-                    return "Error: " + err.toString();
+                    return "Error:" + err.toString();
                 }
             })();
         `;
 
-        csInterface.evalScript(script, function (result) {
+        csInterface.evalScript(script, (result) => {
             if (result.startsWith('Success:')) {
                 showCustomAlert('Applied to ' + result.split(':')[1] + ' layer(s)', true);
             } else {
@@ -293,8 +292,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 </div>
                 <div class="alert-message">${message}</div>
                 <button class="alert-close">OK</button>
-            </div>
-        `;
+            </div>`;
         document.body.appendChild(alertBox);
         setTimeout(() => alertBox.classList.add('visible'), 10);
         alertBox.querySelector('.alert-close').addEventListener('click', () => {
@@ -338,58 +336,69 @@ document.addEventListener('DOMContentLoaded', function () {
             document.querySelector('.pack-dropdown-content').classList.remove('show')
         );
     }
-    // 🔹 UPDATE SYSTEM
-    async function checkForUpdates() {
+
+    // 🆕 SMART UPDATE SYSTEM
+    async function checkForSmartUpdates() {
+        const cs = new CSInterface();
+        const extPath = cs.getSystemPath(SystemPath.EXTENSION);
+        const currentVersion = '1.2'; // manifest.xml versiya
+
         try {
-            const currentVersion = '1.2'; // manifestdagi hozirgi versiya
             const response = await fetch(
                 'https://darkpanel-coral.vercel.app/update.json?t=' + Date.now()
             );
-            const data = await response.json();
+            const remote = await response.json();
+            if (!remote || !remote.files) return;
 
-            if (!data.version) return;
-            if (data.version !== currentVersion) {
-                showUpdateAlert(data.version, data.changelog, data.downloadUrl);
+            if (remote.version !== currentVersion) {
+                await updateChangedFiles(remote.files, extPath);
             }
         } catch (err) {
             console.log('Update check failed:', err);
         }
     }
 
-    function showUpdateAlert(newVersion, changelog, link) {
-        const existing = document.querySelector('.update-alert');
-        if (existing) existing.remove();
-
-        const alertBox = document.createElement('div');
-        alertBox.className = 'update-alert';
-        alertBox.innerHTML = `
-        <div class="alert-content">
-            <h3>🆕 New Update Available (v${newVersion})</h3>
-            <p>${changelog}</p>
-            <div class="alert-buttons">
-                <button class="update-now">Update Now</button>
-                <button class="later-btn">Later</button>
-            </div>
-        </div>
-    `;
-        document.body.appendChild(alertBox);
-
-        // style animatsiyasi
-        setTimeout(() => alertBox.classList.add('visible'), 10);
-
-        alertBox.querySelector('.update-now').addEventListener('click', () => {
-            const cs = new CSInterface();
-            cs.openURLInDefaultBrowser(link);
-            alertBox.remove();
-        });
-
-        alertBox.querySelector('.later-btn').addEventListener('click', () => {
-            alertBox.remove();
-        });
+    async function updateChangedFiles(fileList, basePath) {
+        for (const [path, info] of Object.entries(fileList)) {
+            const localFile = new File(basePath + '/' + path);
+            if (!localFile.exists) {
+                await downloadFile(info.url, localFile);
+                continue;
+            }
+            localFile.open('r');
+            const data = localFile.read();
+            localFile.close();
+            const hash = calcHash(data);
+            if (hash !== info.hash) await downloadFile(info.url, localFile);
+        }
+        showCustomAlert('✅ darkPanel updated successfully. Restart AE.', true);
     }
 
-    // 🔹 avtomatik tekshirish sahifa yuklanganda
-    checkForUpdates();
+    async function downloadFile(url, destFile) {
+        try {
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', url, false);
+            xhr.overrideMimeType('text/plain; charset=x-user-defined');
+            xhr.send(null);
+            if (xhr.status === 200) {
+                destFile.encoding = 'BINARY';
+                destFile.open('w');
+                destFile.write(xhr.responseText);
+                destFile.close();
+            }
+        } catch (err) {
+            console.log('Download failed for', url, err);
+        }
+    }
+
+    function calcHash(str) {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            hash = (hash << 5) - hash + str.charCodeAt(i);
+            hash |= 0;
+        }
+        return hash.toString(16);
+    }
 
     init();
 });
