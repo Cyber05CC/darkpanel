@@ -30,6 +30,7 @@ document.addEventListener('DOMContentLoaded', function () {
         setupPresetSelection();
         setupGridControl();
         status.textContent = 'No items selected';
+        console.log('Checking updates...');
         checkForSmartUpdates(); // 🆕 Avtomatik update tekshiruvi
     }
 
