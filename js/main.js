@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // ----------------------- UPDATE CONFIG -----------------------
     const REMOTE_BASE = 'https://darkpanel-coral.vercel.app';
     const UPDATE_URL = REMOTE_BASE + '/update.json';
-    const BUNDLE_VERSION = '1.3'; // CSXS/manifest.xml dagisi bilan mos
+    const BUNDLE_VERSION = '1.4'; // CSXS/manifest.xml dagisi bilan mos
     const LS_INSTALLED = 'darkpanel_installed_version'; // localStorage kalit
     const SUPPORTED_TEXT_FILES = ['index.html', 'css/style.css', 'js/main.js', 'CSXS/manifest.xml'];
     // -------------------------------------------------------------
@@ -35,6 +35,51 @@ document.addEventListener('DOMContentLoaded', function () {
     init();
     safeCheckForUpdates(); // sahifa ochilganda tekshir
     // ---------------------------------------------------
+
+    // ===================== INTERNET CONNECTION WATCHER =====================
+    function setupConnectionWatcher() {
+        function showConnectionAlert(message, type = 'error') {
+            // mavjud alert bo‘lsa olib tashlaymiz
+            const existing = document.querySelector('.net-alert');
+            if (existing) existing.remove();
+
+            const alert = document.createElement('div');
+            alert.className = `net-alert ${type}`;
+            alert.innerHTML = `
+            <div class="net-alert-content">
+                ${type === 'error' ? '📡' : '🌐'} ${message}
+            </div>
+        `;
+            document.body.appendChild(alert);
+            setTimeout(() => alert.classList.add('visible'), 10);
+            if (type === 'success') {
+                setTimeout(() => {
+                    alert.classList.remove('visible');
+                    setTimeout(() => alert.remove(), 400);
+                }, 2000);
+            }
+        }
+
+        // offline
+        window.addEventListener('offline', () => {
+            showConnectionAlert('You’re offline! Check your internet connection.', 'error');
+        });
+
+        // online
+        window.addEventListener('online', () => {
+            showConnectionAlert('✅ Back online! Reloading...', 'success');
+            setTimeout(() => location.reload(), 1500);
+        });
+
+        // sahifa yuklanganda offline bo‘lsa — darhol ko‘rsatamiz
+        if (!navigator.onLine) {
+            showConnectionAlert('You’re offline! Check your internet connection.', 'error');
+        }
+    }
+    // ======================================================================
+
+    // chaqirish:
+    setupConnectionWatcher();
 
     // ===================== UPDATE SYSTEM =====================
     async function safeCheckForUpdates() {

@@ -472,4 +472,31 @@ body {
     text-shadow: 0 0 15px rgba(96, 0, 255, 1);
     transform: scale(1.05);
 }
-/* UPDATE ALERT */
+/* NET ALERT */
+.net-alert {
+    position: fixed;
+    top: 15px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-20px);
+    background: #ff5252;
+    color: #fff;
+    font-size: 14px;
+    padding: 10px 18px;
+    border-radius: 10px;
+    opacity: 0;
+    z-index: 99999;
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.3s ease;
+}
+.net-alert.visible {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+}
+.net-alert.success {
+    background: #00c853;
+}
+.net-alert-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
