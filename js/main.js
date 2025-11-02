@@ -1,12 +1,13 @@
 document.addEventListener('DOMContentLoaded', function () {
     const csInterface = new CSInterface();
 
-    // ---------------- CONFIG ----------------
-    const GITHUB_RAW = 'https://raw.githubusercontent.com/Cyber05CC/darkpanel/main';
-    const UPDATE_URL = GITHUB_RAW + '/update.json';
-    const BUNDLE_VERSION = '1.6';
+    // ----------------------- CONFIG -----------------------
+    const GITHUB_RAW = 'https://raw.githubusercontent.com/Cyber05CC/darkpanel/main'; // 🔥 GitHub Raw manziling
+    const UPDATE_URL = GITHUB_RAW + '/update.json'; // update.json ham GitHub'dan o'qiladi
+    const BUNDLE_VERSION = '1.2';
     const LS_INSTALLED = 'darkpanel_installed_version';
-    // ----------------------------------------
+    const SUPPORTED_TEXT_FILES = ['index.html', 'css/style.css', 'js/main.js', 'CSXS/manifest.xml'];
+    // -------------------------------------------------------
 
     let selectedPreset = null;
     const autoPlayCheckbox = document.getElementById('autoPlay');
@@ -30,13 +31,13 @@ document.addEventListener('DOMContentLoaded', function () {
     let favorites = JSON.parse(localStorage.getItem('favorites')) || [];
     let presets = [];
 
-    // ---------- STARTUP ----------
+    // -------------------- STARTUP --------------------
     setupConnectionWatcher();
     init();
-    checkForUpdates();
-    // ------------------------------
+    safeCheckForUpdates();
+    // -------------------------------------------------
 
-    // ----------- INTERNET WATCHER -----------
+    // ===================== INTERNET WATCHER =====================
     function setupConnectionWatcher() {
         function showConnectionAlert(message, type = 'error') {
             const existing = document.querySelector('.net-alert');
@@ -44,12 +45,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
             const alert = document.createElement('div');
             alert.className = `net-alert ${type}`;
-            alert.innerHTML = `<div class="net-alert-content">${
-                type === 'error' ? '📡' : '🌐'
-            } ${message}</div>`;
+            alert.innerHTML = `
+                <div class="net-alert-content">
+                    ${type === 'error' ? '📡' : '🌐'} ${message}
+                </div>
+            `;
             document.body.appendChild(alert);
             setTimeout(() => alert.classList.add('visible'), 10);
-
             if (type === 'success') {
                 setTimeout(() => {
                     alert.classList.remove('visible');
@@ -71,10 +73,10 @@ document.addEventListener('DOMContentLoaded', function () {
             showConnectionAlert('Siz hozir oflayndasiz! Internetni tekshiring.', 'error');
         }
     }
-    // ----------------------------------------
+    // =============================================================
 
-    // ----------- UPDATE SYSTEM -----------
-    async function checkForUpdates() {
+    // ===================== UPDATE SYSTEM =====================
+    async function safeCheckForUpdates() {
         try {
             const res = await fetch(UPDATE_URL + '?t=' + Date.now());
             if (!res.ok) throw new Error('update.json topilmadi');
@@ -105,28 +107,143 @@ document.addEventListener('DOMContentLoaded', function () {
                     <button id="updateNow" class="alert-close">Yangilash</button>
                     <button id="updateLater" class="alert-close" style="background:#3b3b3b">Keyinroq</button>
                 </div>
-            </div>`;
+            </div>
+        `;
         document.body.appendChild(popup);
 
-        document.getElementById('updateLater').onclick = () => popup.remove();
+        document.getElementById('updateLater').addEventListener('click', () => {
+            popup.remove();
+        });
 
-        document.getElementById('updateNow').onclick = async () => {
-            popup.querySelector('.alert-message').textContent = '⏳ Yangilanish yuklanmoqda...';
+        document.getElementById('updateNow').addEventListener('click', async () => {
+            setUpdateStatus('⏳ Yangilanmoqda...');
             try {
-                for (const [file, info] of Object.entries(files)) {
-                    await fetch(info.url + '?t=' + Date.now());
+                const ok = await tryWriteToExtension(files);
+                if (ok) {
+                    localStorage.setItem(LS_INSTALLED, version);
+                    setUpdateStatus('✅ Yangilandi! Qayta yuklanmoqda...');
+                    setTimeout(() => location.reload(), 900);
+                    return;
                 }
-                localStorage.setItem(LS_INSTALLED, version);
-                popup.querySelector('.alert-message').textContent = '✅ Yangilandi! Qayta oching.';
-                setTimeout(() => location.reload(), 1500);
-            } catch (e) {
-                popup.querySelector('.alert-message').textContent = '❌ Xatolik: ' + e.message;
-            }
-        };
-    }
-    // --------------------------------------
 
-    // ----------- UI LOGIKA -----------
+                await applyRemoteOverlay(files);
+                localStorage.setItem(LS_INSTALLED, version);
+                setUpdateStatus('✅ Yangilandi (overlay). After Effects ni qayta ishga tushiring.');
+            } catch (err) {
+                console.error(err);
+                setUpdateStatus('❌ Yangilash xatosi: ' + err.message);
+            }
+        });
+
+        function setUpdateStatus(msg) {
+            popup.querySelector('.alert-message').textContent = msg;
+        }
+    }
+
+    async function tryWriteToExtension(files) {
+        const extRoot = csInterface.getSystemPath(SystemPath.EXTENSION);
+
+        const ensureFoldersScript = (fullPath) => `
+            (function() {
+                function ensureFolder(path) {
+                    var parts = path.split(/[\\\/]/);
+                    var acc = parts.shift();
+                    while (parts.length) {
+                        acc += "/" + parts.shift();
+                        var f = new Folder(acc);
+                        if (!f.exists) { try { f.create(); } catch(e) { return "ERR:" + e; } }
+                    }
+                    return "OK";
+                }
+                return ensureFolder("${fullPath.replace(/"/g, '\\"')}");
+            })();
+        `;
+
+        for (const [rel, info] of Object.entries(files || {})) {
+            if (!SUPPORTED_TEXT_FILES.includes(rel)) continue;
+            const url = info.url + '?t=' + Date.now();
+
+            const text = await (await fetch(url)).text();
+
+            const dir = rel.split('/').slice(0, -1).join('/');
+            if (dir) {
+                const targetDir = extRoot + '/' + dir;
+                const ok = await new Promise((resolve) => {
+                    csInterface.evalScript(ensureFoldersScript(targetDir), (res) =>
+                        resolve(res === 'OK')
+                    );
+                });
+                if (!ok) return false;
+            }
+
+            const targetFile = `${extRoot}/${rel}`;
+            const wrote = await writeFileInChunks(targetFile, text);
+            if (!wrote) return false;
+        }
+        return true;
+    }
+
+    async function writeFileInChunks(targetFile, text) {
+        const chunkSize = 30000;
+        const chunks = [];
+        for (let i = 0; i < text.length; i += chunkSize) {
+            chunks.push(text.substring(i, i + chunkSize));
+        }
+
+        let mode = 'w';
+        for (const chunk of chunks) {
+            const writeChunkScript = `
+                (function() {
+                    try {
+                        var f = new File("${targetFile.replace(/"/g, '\\"')}");
+                        f.encoding = "UTF-8";
+                        f.open("${mode}");
+                        f.write(${JSON.stringify(chunk)});
+                        f.close();
+                        return "OK";
+                    } catch(e) { return "ERR:" + e; }
+                })();
+            `;
+            const result = await new Promise((resolve) => {
+                csInterface.evalScript(writeChunkScript, (res) => resolve(res === 'OK'));
+            });
+            if (!result) return false;
+            mode = 'a';
+        }
+        return true;
+    }
+
+    async function applyRemoteOverlay(files) {
+        if (files['css/style.css']) {
+            const id = 'overlay-style';
+            let link = document.getElementById(id);
+            if (!link) {
+                link = document.createElement('link');
+                link.rel = 'stylesheet';
+                link.id = id;
+                document.head.appendChild(link);
+            }
+            link.href = files['css/style.css'].url + '?t=' + Date.now();
+        }
+
+        if (files['index.html']) {
+            try {
+                const html = await (
+                    await fetch(files['index.html'].url + '?t=' + Date.now())
+                ).text();
+                const tmp = document.createElement('div');
+                tmp.innerHTML = html;
+                const newMain = tmp.querySelector('main');
+                const curMain = document.querySelector('main');
+                if (newMain && curMain) curMain.innerHTML = newMain.innerHTML;
+            } catch (e) {
+                console.log('Overlay HTML swap skipped:', e);
+            }
+        }
+    }
+    // ==========================================================
+
+    // ---------------------- UI LOGIKA -------------------------
     function init() {
         updatePackUI();
         createPresets();
@@ -159,6 +276,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const preset = document.createElement('div');
             preset.className = 'preset';
             preset.dataset.file = `${currentPack}_${i}.ffx`;
+
             const videoSrc = `${GITHUB_RAW}/assets/videos/${currentPack}_${i}.mp4?t=${Date.now()}`;
             preset.innerHTML = `
                 <div class="preset-thumb">
@@ -167,7 +285,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     </video>
                     <input type="checkbox" class="favorite-check" data-file="${currentPack}_${i}.ffx">
                 </div>
-                <div class="preset-name">${packType} ${i}</div>`;
+                <div class="preset-name">${packType} ${i}</div>
+            `;
             presetList.appendChild(preset);
         }
 
@@ -282,60 +401,121 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    function applyPreset() {
+    async function applyPreset() {
         if (!selectedPreset) {
             showCustomAlert('Please select a preset first!', false);
             return;
         }
 
         const remotePresetUrl = `${GITHUB_RAW}/presets/${selectedPreset}`;
-        fetch(remotePresetUrl)
-            .then((res) => {
-                if (!res.ok) throw new Error('Preset not found on GitHub');
-                return res.blob();
-            })
-            .then((blob) => {
-                const reader = new FileReader();
-                reader.onload = () => {
-                    const base64data = reader.result.split(',')[1];
-                    const jsxScript = `
-                    (function() {
-                        try {
-                            function b64decode(b64) {
-                                var chars="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-                                var out="", buffer=0, bits=0, c;
-                                for (var i=0;i<b64.length;i++){c=b64.charAt(i);
-                                    if(c==='=')break;
-                                    var idx=chars.indexOf(c);
-                                    if(idx===-1)continue;
-                                    buffer=(buffer<<6)|idx; bits+=6;
-                                    if(bits>=8){bits-=8;out+=String.fromCharCode((buffer>>bits)&0xFF);}
-                                } return out;
-                            }
-                            var presetPath = Folder.temp.fsName + "/temp.ffx";
-                            var f = new File(presetPath);
-                            var bin = b64decode('${base64data}');
-                            f.encoding='BINARY'; f.open('w'); f.write(bin); f.close();
+        try {
+            const res = await fetch(remotePresetUrl);
+            if (!res.ok) throw new Error('Preset not found on GitHub');
+            const blob = await res.blob();
+            const base64 = await blobToBase64(blob);
+            const chunkSize = 20000;
+            const chunks = [];
+            for (let i = 0; i < base64.length; i += chunkSize) {
+                chunks.push(base64.slice(i, i + chunkSize));
+            }
 
-                            var item=app.project.activeItem;
-                            if(!item||(!
-(item instanceof CompItem)))return'Error: No comp';
-                            var layers=item.selectedLayers;
-                            if(layers.length===0)return'Error: No layers selected';
-                            for(var i=0;i<layers.length;i++){layers[i].applyPreset(f);}
-                            try{f.remove();}catch(e){}
-                            return'Success:'+layers.length;
-                        }catch(e){return'Error:'+e.toString();}
-                    })();`;
-                    csInterface.evalScript(jsxScript, (result) => {
-                        if (result.startsWith('Success:'))
-                            showCustomAlert('✅ Preset applied successfully!', true);
-                        else showCustomAlert(result, false);
-                    });
-                };
-                reader.readAsDataURL(blob);
-            })
-            .catch((err) => showCustomAlert('❌ Failed: ' + err.message, false));
+            // Open file
+            const openScript = `
+                (function() {
+                    try {
+                        var presetPath = Folder.temp.fsName + "\\\\temp.ffx";
+                        var f = new File(presetPath);
+                        f.encoding = "BINARY";
+                        if (!f.open("w")) return "Error: Cannot open file for writing";
+                        f.close();
+                        return presetPath;
+                    } catch(e) { return "Error: " + e; }
+                })();
+            `;
+            const openResult = await new Promise((resolve) => {
+                csInterface.evalScript(openScript, resolve);
+            });
+            if (openResult.startsWith('Error:')) {
+                showCustomAlert(openResult, false);
+                return;
+            }
+            const presetPath = openResult;
+
+            // Append chunks
+            for (const chunk of chunks) {
+                const appendScript = `
+                    (function() {
+                        function b64decode(b64) {
+                            var chars="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+                            var out="", buffer=0, bits=0, c;
+                            for (var i=0;i<b64.length;i++){c=b64.charAt(i);
+                                if(c==='=')break;
+                                var idx=chars.indexOf(c);
+                                if(idx===-1)continue;
+                                buffer=(buffer<<6)|idx; bits+=6;
+                                if(bits>=8){bits-=8;out+=String.fromCharCode((buffer>>bits)&0xFF);}
+                            } return out;
+                        }
+                        try {
+                            var f = new File("${presetPath.replace(/\\/g, '\\\\')}");
+                            f.encoding = "BINARY";
+                            if (!f.open("a")) return "Error: Cannot open file for append";
+                            var bin = b64decode('${chunk}');
+                            f.write(bin);
+                            f.close();
+                            return "OK";
+                        } catch(e) { return "Error: " + e; }
+                    })();
+                `;
+                const appendResult = await new Promise((resolve) => {
+                    csInterface.evalScript(appendScript, resolve);
+                });
+                if (appendResult !== 'OK') {
+                    showCustomAlert(appendResult, false);
+                    return;
+                }
+            }
+
+            // Apply preset
+            const applyScript = `
+                (function() {
+                    try {
+                        var f = new File("${presetPath.replace(/\\/g, '\\\\')}");
+                        if (!f.exists) return "Error: File not found";
+                        var activeItem = app.project.activeItem;
+                        if (!activeItem || !(activeItem instanceof CompItem)) return "Error: No active composition";
+                        var selectedLayers = activeItem.selectedLayers;
+                        if (selectedLayers.length === 0) return "Error: Please select at least one layer";
+                        var successCount = 0;
+                        for (var i = 0; i < selectedLayers.length; i++) {
+                            var layer = selectedLayers[i];
+                            layer.applyPreset(f);
+                            successCount++;
+                        }
+                        f.remove();
+                        return "Success:" + successCount;
+                    } catch(err) { return "Error: " + err.toString(); }
+                })();
+            `;
+            csInterface.evalScript(applyScript, (result) => {
+                if (result.startsWith('Success:')) {
+                    showCustomAlert('Applied to ' + result.split(':')[1] + ' layer(s)', true);
+                } else {
+                    showCustomAlert(result, false);
+                }
+            });
+        } catch (err) {
+            showCustomAlert('❌ Failed: ' + err.message, false);
+        }
+    }
+
+    function blobToBase64(blob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result.split(',')[1]);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
     }
 
     function showCustomAlert(message, isSuccess) {
