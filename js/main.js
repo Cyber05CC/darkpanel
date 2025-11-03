@@ -30,6 +30,7 @@ document.addEventListener('DOMContentLoaded', function () {
     let currentPack = localStorage.getItem('currentPack') || 'text';
     let favorites = JSON.parse(localStorage.getItem('favorites')) || [];
     let presets = [];
+    let currentVersion = localStorage.getItem(LS_INSTALLED) || BUNDLE_VERSION;
 
     // -------------------- STARTUP --------------------
     setupConnectionWatcher();
@@ -79,7 +80,7 @@ document.addEventListener('DOMContentLoaded', function () {
     async function safeCheckForUpdates() {
         try {
             const res = await fetch(UPDATE_URL + '?t=' + Date.now());
-            if (!res.ok) throw new Error('update.json topilmadi');
+            if (!res.ok) throw new Error('update.json not found');
             const remote = await res.json();
 
             const installed = localStorage.getItem(LS_INSTALLED) || BUNDLE_VERSION;
@@ -87,7 +88,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (remote?.version && remote.version !== installed) {
                 showUpdatePopup(remote.version, remote.files);
             } else {
-                console.log('✅ Versiya yangilangan:', installed);
+                console.log('✅ Version updated:', installed);
             }
         } catch (e) {
             console.warn('❌ Update check xatosi:', e);
@@ -102,10 +103,10 @@ document.addEventListener('DOMContentLoaded', function () {
         popup.className = 'custom-alert update visible';
         popup.innerHTML = `
             <div class="alert-content">
-                <div class="alert-message">🆕 Yangi versiya mavjud (v${version})</div>
+                <div class="alert-message">New version available (v${version})</div>
                 <div style="display:flex;gap:10px;justify-content:center;margin-top:8px">
-                    <button id="updateNow" class="alert-close">Yangilash</button>
-                    <button id="updateLater" class="alert-close" style="background:#3b3b3b">Keyinroq</button>
+                    <button id="updateNow" class="alert-close">Update</button>
+                    <button id="updateLater" class="alert-close" style="background:#3b3b3b">Later</button>
                 </div>
             </div>
         `;
@@ -116,22 +117,26 @@ document.addEventListener('DOMContentLoaded', function () {
         });
 
         document.getElementById('updateNow').addEventListener('click', async () => {
-            setUpdateStatus('⏳ Yangilanmoqda...');
+            setUpdateStatus('⏳ Loading...');
             try {
                 const ok = await tryWriteToExtension(files);
                 if (ok) {
                     localStorage.setItem(LS_INSTALLED, version);
-                    setUpdateStatus('✅ Yangilandi! Qayta yuklanmoqda...');
+                    currentVersion = version;
+                    updateVersionDisplay();
+                    setUpdateStatus('✅ Updated! Reloading...');
                     setTimeout(() => location.reload(), 900);
                     return;
                 }
 
                 await applyRemoteOverlay(files);
                 localStorage.setItem(LS_INSTALLED, version);
-                setUpdateStatus('✅ Yangilandi (overlay). After Effects ni qayta ishga tushiring.');
+                currentVersion = version;
+                updateVersionDisplay();
+                setUpdateStatus('✅ Updated (overlay). Refresh...');
             } catch (err) {
                 console.error(err);
-                setUpdateStatus('❌ Yangilash xatosi: ' + err.message);
+                setUpdateStatus('❌ Update error: ' + err.message);
             }
         });
 
@@ -250,6 +255,23 @@ document.addEventListener('DOMContentLoaded', function () {
         setupEventListeners();
         setupGridControl();
         if (status) status.textContent = 'No items selected';
+        updateVersionDisplay();
+    }
+
+    function updateVersionDisplay() {
+        let versionEl = document.getElementById('version-display');
+        if (!versionEl) {
+            versionEl = document.createElement('div');
+            versionEl.id = 'version-display';
+            versionEl.style.position = 'absolute';
+            versionEl.style.bottom = '10px';
+            versionEl.style.right = '10px';
+            versionEl.style.color = '#888';
+            versionEl.style.fontSize = '12px';
+            versionEl.style.opacity = '0.7';
+            document.body.appendChild(versionEl);
+        }
+        versionEl.textContent = `v${currentVersion}`;
     }
 
     function updatePackUI() {
