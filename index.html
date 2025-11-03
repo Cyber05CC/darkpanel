@@ -4,7 +4,11 @@
         <meta charset="UTF-8" />
         <title>darkPanel</title>
         <link rel="stylesheet" href="./css/style.css" />
+
+        <!-- Adobe CEP -->
         <script src="./js/CSInterface.js"></script>
+
+        <!-- Main Script -->
         <script src="./js/main.js"></script>
     </head>
     <body>
@@ -15,7 +19,7 @@
                 </video>
                 <div class="auto_play_btn_father">
                     <label for="autoPlay" class="auto-play-label">
-                        <span style="font-size: 10px"> Auto Play</span>
+                        <span style="font-size: 10px">Auto Play</span>
                         <input type="checkbox" id="autoPlay" />
                     </label>
                 </div>
@@ -47,17 +51,11 @@
                     </div>
                 </header>
 
-                <div class="presets" id="presetList">
-                    <!-- Presetlar avtomatik ravishda JS orqali yuklanadi -->
-                </div>
+                <div class="presets" id="presetList"></div>
                 <div class="pagination">
-                    <button id="prevPage" disabled>
-                        <span class="material-icons">❮</span>
-                    </button>
+                    <button id="prevPage" disabled><span>❮</span></button>
                     <span id="pageInfo">Page 1 of 3</span>
-                    <button id="nextPage">
-                        <span class="material-icons">❯</span>
-                    </button>
+                    <button id="nextPage"><span>❯</span></button>
                 </div>
                 <div class="status" id="status">No items selected</div>
                 <div class="footer-credit">Owner: <span>@darken_ae</span></div>
