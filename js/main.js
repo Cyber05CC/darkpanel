@@ -119,16 +119,15 @@ document.addEventListener('DOMContentLoaded', function () {
             setUpdateStatus('⏳ Loading...');
             try {
                 const ok = await tryWriteToExtension(files);
+                localStorage.setItem(LS_INSTALLED, version); // Versiyani har holda saqla
                 if (ok) {
-                    localStorage.setItem(LS_INSTALLED, version);
                     setUpdateStatus('✅ Updated! Reloading...');
                     setTimeout(() => location.reload(), 900);
-                    return;
+                } else {
+                    await applyRemoteOverlay(files);
+                    setUpdateStatus('✅ Updated (overlay). Reloading...');
+                    setTimeout(() => location.reload(), 900); // Overlay da ham reload qo'shdik
                 }
-
-                await applyRemoteOverlay(files);
-                localStorage.setItem(LS_INSTALLED, version);
-                setUpdateStatus('✅ Updated (overlay). Refresh...');
             } catch (err) {
                 console.error(err);
                 setUpdateStatus('❌ Update error: ' + err.message);
