@@ -2,14 +2,15 @@ document.addEventListener('DOMContentLoaded', function () {
     const csInterface = new CSInterface();
 
     // ----------------------- CONFIG -----------------------
-    const GITHUB_RAW = 'https://raw.githubusercontent.com/Cyber05CC/darkpanel/main';
-    const VERCEL_BASE = 'https://darkpanel-coral.vercel.app';
+    const GITHUB_RAW = 'https://raw.githubusercontent.com/Cyber05CC/darkpanel/main'; // Preset/video manzili
+    const VERCEL_BASE = 'https://darkpanel-coral.vercel.app'; // update.json manzili (tez deploy)
     const UPDATE_URL = VERCEL_BASE + '/update.json';
-    const BUNDLE_VERSION = '1.0';
+    const BUNDLE_VERSION = '1.1';
     const LS_INSTALLED = 'darkpanel_installed_version';
+    const LS_LAST_APPLIED = 'darkpanel_last_applied_version';
     const SUPPORTED_TEXT_FILES = ['index.html', 'css/style.css', 'js/main.js', 'CSXS/manifest.xml'];
-    // -------------------------------------------------------
 
+    // UI elementlar
     let selectedPreset = null;
     const autoPlayCheckbox = document.getElementById('autoPlay');
     const presetList = document.getElementById('presetList');
@@ -24,12 +25,13 @@ document.addEventListener('DOMContentLoaded', function () {
     const textPackBtn = document.getElementById('textPackBtn');
     const effectPackBtn = document.getElementById('effectPackBtn');
 
+    // UI holat
     const itemsPerPage = 10;
     let currentPage = 1;
     let totalPages = 1;
     let currentView = 'all';
     let currentPack = localStorage.getItem('currentPack') || 'text';
-    let favorites = JSON.parse(localStorage.getItem('favorites')) || [];
+    let favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
     let presets = [];
     let currentVersion = localStorage.getItem(LS_INSTALLED) || BUNDLE_VERSION;
 
@@ -53,12 +55,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 </div>
             `;
             document.body.appendChild(alert);
-            setTimeout(() => alert.classList.add('visible'), 10);
+            requestAnimationFrame(() => alert.classList.add('visible'));
             if (type === 'success') {
                 setTimeout(() => {
                     alert.classList.remove('visible');
                     setTimeout(() => alert.remove(), 400);
-                }, 2000);
+                }, 1800);
             }
         }
 
@@ -67,13 +69,11 @@ document.addEventListener('DOMContentLoaded', function () {
         });
 
         window.addEventListener('online', () => {
-            showConnectionAlert('Internet tiklandi, sahifa yangilanmoqda...', 'success');
-            setTimeout(() => location.reload(true), 1500);
+            showConnectionAlert('Internet tiklandi. Sahifa yangilanmoqda...', 'success');
+            setTimeout(() => location.reload(true), 1200);
         });
 
-        if (!navigator.onLine) {
-            showConnectionAlert('Internet ulanmagan.', 'error');
-        }
+        if (!navigator.onLine) showConnectionAlert('Internet ulanmagan.', 'error');
     }
     // =============================================================
 
@@ -81,18 +81,19 @@ document.addEventListener('DOMContentLoaded', function () {
     async function safeCheckForUpdates() {
         try {
             const res = await fetch(UPDATE_URL + '?t=' + Date.now(), { cache: 'no-store' });
-            if (!res.ok) throw new Error('update.json not found');
+            if (!res.ok) throw new Error('update.json topilmadi');
             const remote = await res.json();
 
             const installed = localStorage.getItem(LS_INSTALLED) || BUNDLE_VERSION;
-
             if (remote?.version && remote.version !== installed) {
-                showUpdatePopup(remote.version, remote.files);
+                showUpdatePopup(remote.version, remote.files || {});
             } else {
-                console.log('✅ Up to date:', installed);
+                console.log('✅ Versiya dolzarb:', installed);
+                currentVersion = installed;
+                updateVersionDisplay();
             }
         } catch (e) {
-            console.warn('❌ Update check error:', e);
+            console.warn('❌ Update check xatosi:', e);
         }
     }
 
@@ -103,101 +104,266 @@ document.addEventListener('DOMContentLoaded', function () {
         const popup = document.createElement('div');
         popup.className = 'custom-alert update visible';
         popup.innerHTML = `
-        <div class="alert-content">
-            <div class="alert-message">🆕 Yangi versiya (v${version}) mavjud!</div>
-            <div style="display:flex;gap:10px;justify-content:center;margin-top:8px">
-                <button id="updateNow" class="alert-close">Yangilash</button>
-                <button id="updateLater" class="alert-close" style="background:#3b3b3b">Keyinroq</button>
+            <div class="alert-content">
+                <div class="alert-message">🆕 Yangi versiya topildi (v${version})</div>
+                <div style="display:flex;gap:10px;justify-content:center;margin-top:8px">
+                    <button id="updateNow" class="alert-close">Yangilash</button>
+                    <button id="updateLater" class="alert-close" style="background:#3b3b3b">Keyinroq</button>
+                </div>
             </div>
-        </div>
-    `;
+        `;
         document.body.appendChild(popup);
 
         document.getElementById('updateLater').addEventListener('click', () => popup.remove());
 
         document.getElementById('updateNow').addEventListener('click', async () => {
-            popup.querySelector('.alert-message').textContent = '⏳ Yuklanmoqda...';
+            setUpdateStatus('⏳ Yuklanmoqda...');
             try {
+                // 1) Extension papkaga yozishga urinamiz
                 const ok = await tryWriteToExtension(files);
+                // Versiyani darhol saqlab qo'yamiz (UI versiya ko‘rinsin)
                 localStorage.setItem(LS_INSTALLED, version);
-                popup.querySelector('.alert-message').textContent =
-                    '✅ Yangilandi! Panel qayta ishga tushmoqda...';
-                setTimeout(() => reloadExtension(), 1200);
+                localStorage.setItem(LS_LAST_APPLIED, version);
+                currentVersion = version;
+                updateVersionDisplay();
+
+                if (ok) {
+                    setUpdateStatus('✅ Yangilandi! Panel qayta ishga tushmoqda…');
+                    // lokal fayllar o‘zgargan — toza start uchun reload
+                    setTimeout(() => hardReloadExtension(), 1000);
+                    return;
+                }
+
+                // 2) Yozish imkoni bo‘lmasa — overlay hot-swap (index.html & css)
+                await applyRemoteOverlay(files, version);
+                setUpdateStatus('✅ Overlay yangilandi! UI qayta yuklanmoqda…');
+                setTimeout(() => {
+                    // to‘liq tozalanish + yangi resurslar bilan yuklash
+                    hardReloadUI(version);
+                }, 900);
             } catch (err) {
-                popup.querySelector('.alert-message').textContent = '❌ Xatolik: ' + err.message;
+                console.error(err);
+                setUpdateStatus('❌ Yangilashda xato: ' + err.message);
             }
         });
+
+        function setUpdateStatus(msg) {
+            popup.querySelector('.alert-message').textContent = msg;
+        }
     }
 
     async function tryWriteToExtension(files) {
         const extRoot = csInterface.getSystemPath(SystemPath.EXTENSION);
-        const ensureFolder = (path) => `
-        (function() {
-            var f = new Folder("${path}");
-            if (!f.exists) f.create();
-            return f.exists;
-        })();
-    `;
+
+        const ensureFoldersScript = (fullPath) => `
+            (function() {
+                function ensureFolder(path) {
+                    var parts = path.split(/[\\\\\\/]/);
+                    var acc = parts.shift();
+                    while (parts.length) {
+                        acc += "/" + parts.shift();
+                        var f = new Folder(acc);
+                        if (!f.exists) { try { f.create(); } catch(e) { return "ERR:" + e; } }
+                    }
+                    return "OK";
+                }
+                return ensureFolder("${fullPath.replace(/"/g, '\\"')}");
+            })();
+        `;
 
         for (const [rel, info] of Object.entries(files || {})) {
+            if (!SUPPORTED_TEXT_FILES.includes(rel)) continue; // faqat xavfsiz matn fayllar
             const url = info.url + '?v=' + Date.now();
             const text = await (await fetch(url, { cache: 'no-store' })).text();
 
+            // Papka
             const dir = rel.split('/').slice(0, -1).join('/');
             if (dir) {
-                const dirPath = `${extRoot}/${dir}`;
-                await new Promise((resolve) => {
-                    csInterface.evalScript(ensureFolder(dirPath), () => resolve(true));
+                const targetDir = extRoot + '/' + dir;
+                const ok = await new Promise((resolve) => {
+                    csInterface.evalScript(ensureFoldersScript(targetDir), (res) =>
+                        resolve(res === 'OK')
+                    );
                 });
+                if (!ok) return false;
             }
 
-            const target = `${extRoot}/${rel}`;
-            await new Promise((resolve) => {
-                const script = `
+            // Fayl yozish (chunk bilan)
+            const targetFile = `${extRoot}/${rel}`;
+            const wrote = await writeFileInChunks(targetFile, text);
+            if (!wrote) return false;
+        }
+        return true;
+    }
+
+    async function writeFileInChunks(targetFile, text) {
+        const chunkSize = 30000; // evalScript limitidan xavfsiz
+        const chunks = [];
+        for (let i = 0; i < text.length; i += chunkSize) {
+            chunks.push(text.substring(i, i + chunkSize));
+        }
+
+        let mode = 'w';
+        for (const chunk of chunks) {
+            const writeChunkScript = `
                 (function() {
                     try {
-                        var f = new File("${target.replace(/"/g, '\\"')}");
+                        var f = new File("${targetFile.replace(/"/g, '\\"')}");
                         f.encoding = "UTF-8";
-                        f.open("w");
-                        f.write(${JSON.stringify(text)});
+                        f.open("${mode}");
+                        f.write(${JSON.stringify(chunk)});
                         f.close();
                         return "OK";
                     } catch(e) { return "ERR:" + e; }
                 })();
             `;
-                csInterface.evalScript(script, (res) => resolve(res));
+            const result = await new Promise((resolve) => {
+                csInterface.evalScript(writeChunkScript, (res) => resolve(res === 'OK'));
             });
+            if (!result) return false;
+            mode = 'a';
         }
-
         return true;
     }
 
-    // 🧠 Asosiy yangilik: panelni qayta ishga tushirish
-    function reloadExtension() {
-        // 1. LocalStorage va cache’ni tozalaymiz
-        localStorage.clear();
-        sessionStorage.clear();
+    // ------ Overlay: index.html & style.css ni hot-swap, cache busting ------
+    async function applyRemoteOverlay(files, version) {
+        // CSS hot swap (agar fayl ro‘yxatda bo‘lsa)
+        if (files['css/style.css']) {
+            hotSwapCss(files['css/style.css'].url, version);
+        }
 
-        // 2. CEP panelni o‘zini qayta ochish
+        // index.html dan <main> bo‘lagini yangilash (agar bor bo‘lsa)
+        if (files['index.html']) {
+            try {
+                const html = await (
+                    await fetch(files['index.html'].url + '?v=' + version + '&t=' + Date.now(), {
+                        cache: 'no-store',
+                    })
+                ).text();
+                const tmp = document.createElement('div');
+                tmp.innerHTML = html;
+                const newMain = tmp.querySelector('main');
+                const curMain = document.querySelector('main');
+
+                if (newMain && curMain) {
+                    // eski video/poster src larni tozalash (autoplay/loop holatlar saqlanadi)
+                    curMain.innerHTML = newMain.innerHTML;
+                    // resurslarni versiya bilan bust qilish
+                    bustAllAssets(curMain, version);
+                }
+                // UI ni qayta bog‘lash
+                init();
+            } catch (e) {
+                console.log('Overlay HTML swap skipped:', e);
+            }
+        }
+    }
+
+    function hotSwapCss(remoteCssUrl, version) {
+        // Eski style.css <link> larini topib, yangisini kiritamiz
+        const links = Array.from(document.querySelectorAll('link[rel="stylesheet"]'));
+        let replaced = false;
+        links.forEach((lnk) => {
+            const href = lnk.getAttribute('href') || '';
+            if (href.includes('css/style.css')) {
+                const newHref = remoteCssUrl + `?v=${encodeURIComponent(version)}&t=${Date.now()}`;
+                lnk.href = newHref;
+                replaced = true;
+            }
+        });
+
+        if (!replaced) {
+            // Agar topilmasa — yangi link qo‘shamiz
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = remoteCssUrl + `?v=${encodeURIComponent(version)}&t=${Date.now()}`;
+            document.head.appendChild(link);
+        }
+    }
+
+    function bustAllAssets(scopeEl, version) {
+        // <img>, <video><source>, <link rel=stylesheet> ichidagi href/src larga ?v= qo‘shamiz
+        const bust = (url) => {
+            if (!url) return url;
+            const sep = url.includes('?') ? '&' : '?';
+            return url + `${sep}v=${encodeURIComponent(version)}&t=${Date.now()}`;
+        };
+
+        scopeEl.querySelectorAll('img').forEach((img) => {
+            if (img.src) img.src = bust(img.src);
+        });
+
+        scopeEl.querySelectorAll('video').forEach((vid) => {
+            const src = vid.getAttribute('src');
+            if (src) vid.setAttribute('src', bust(src));
+            vid.querySelectorAll('source').forEach((s) => {
+                const ssrc = s.getAttribute('src');
+                if (ssrc) s.setAttribute('src', bust(ssrc));
+            });
+            // qayta yuklash
+            try {
+                vid.load();
+            } catch (_) {}
+        });
+    }
+
+    function hardReloadExtension() {
+        // toza start: local/session storage tozalanadi, sahifa qayta yuklanadi
+        sessionStorage.clear();
+        // favorites & layout saqlansin; qolgan eski UI keshlari tozalanadi
+        const keep = {
+            favorites: localStorage.getItem('favorites'),
+            currentPack: localStorage.getItem('currentPack'),
+            gridCols: localStorage.getItem('gridCols'),
+            installed: localStorage.getItem(LS_INSTALLED),
+            lastApplied: localStorage.getItem(LS_LAST_APPLIED),
+        };
+        localStorage.clear();
+        if (keep.favorites) localStorage.setItem('favorites', keep.favorites);
+        if (keep.currentPack) localStorage.setItem('currentPack', keep.currentPack);
+        if (keep.gridCols) localStorage.setItem('gridCols', keep.gridCols);
+        if (keep.installed) localStorage.setItem(LS_INSTALLED, keep.installed);
+        if (keep.lastApplied) localStorage.setItem(LS_LAST_APPLIED, keep.lastApplied);
+
+        // Panelni qayta yuklash (AE tarafida)
         csInterface.evalScript(
             `
-        (function(){
-            try {
-                var extPath = new File($.fileName).parent.fsName;
-                var mainHTML = extPath + "/index.html";
-                var f = new File(mainHTML);
-                if(f.exists) {
-                    app.scheduleTask('$.evalFile(\\'' + f.fsName + '\\')', 0, false);
-                }
-                return "Panel reloaded";
-            } catch(e) { return "Error: " + e; }
-        })();
-    `,
-            (res) => console.log('🔁 Reloaded:', res)
+            (function(){
+                try {
+                    var extPath = new File($.fileName).parent.fsName;
+                    var indexFile = new File(extPath + "/index.html");
+                    if(indexFile.exists){
+                        app.scheduleTask('$.evalFile(\\'' + indexFile.fsName + '\\')', 0, false);
+                    }
+                    return "Panel restarted";
+                } catch(e){ return "Error: " + e; }
+            })();
+        `,
+            (res) => console.log('🔁 Reload:', res)
         );
 
-        // 3. Agar AE panelni yopib ochmaydigan bo‘lsa, sahifani yangilaymiz
-        setTimeout(() => location.reload(true), 1500);
+        setTimeout(() => location.reload(true), 800);
+    }
+
+    function hardReloadUI(version) {
+        // toza UI reload — versiya bilan barcha statik resurslarni bust qilamiz
+        const bustUrl = (url) => {
+            if (!url) return url;
+            const sep = url.includes('?') ? '&' : '?';
+            return url + `${sep}v=${encodeURIComponent(version)}&t=${Date.now()}`;
+        };
+
+        // CSS linklar
+        document.querySelectorAll('link[rel="stylesheet"]').forEach((lnk) => {
+            lnk.href = bustUrl(lnk.href);
+        });
+
+        // Rasmlar/video
+        bustAllAssets(document, version);
+
+        // Sahifa qayta yuklansin (browser taraf)
+        setTimeout(() => location.reload(true), 300);
     }
     // ==========================================================
 
@@ -222,9 +388,12 @@ document.addEventListener('DOMContentLoaded', function () {
             versionEl.style.color = '#888';
             versionEl.style.fontSize = '12px';
             versionEl.style.opacity = '0.7';
+            versionEl.style.pointerEvents = 'none';
             document.body.appendChild(versionEl);
         }
-        versionEl.textContent = `v${currentVersion}`;
+        // ekranga LS_LAST_APPLIED bo‘lsa uni, bo‘lmasa currentVersion ni yozamiz
+        const shown = localStorage.getItem(LS_LAST_APPLIED) || currentVersion || BUNDLE_VERSION;
+        versionEl.textContent = `v${shown}`;
     }
 
     function updatePackUI() {
@@ -252,10 +421,12 @@ document.addEventListener('DOMContentLoaded', function () {
             preset.className = 'preset';
             preset.dataset.file = `${currentPack}_${i}.ffx`;
 
-            const videoSrc = `${GITHUB_RAW}/assets/videos/${currentPack}_${i}.mp4?t=${Date.now()}`;
+            const videoSrc = `${GITHUB_RAW}/assets/videos/${currentPack}_${i}.mp4?v=${encodeURIComponent(
+                localStorage.getItem(LS_LAST_APPLIED) || currentVersion
+            )}&t=${Date.now()}`;
             preset.innerHTML = `
                 <div class="preset-thumb">
-                    <video muted loop playsinline>
+                    <video muted loop playsinline preload="metadata">
                         <source src="${videoSrc}" type="video/mp4" />
                     </video>
                     <input type="checkbox" class="favorite-check" data-file="${currentPack}_${i}.ffx">
@@ -277,14 +448,18 @@ document.addEventListener('DOMContentLoaded', function () {
             const video = preset.querySelector('video');
             preset.addEventListener('mouseenter', () => {
                 if (!autoPlayCheckbox?.checked) {
-                    video.currentTime = 0;
-                    video.play().catch(() => {});
+                    try {
+                        video.currentTime = 0;
+                        video.play().catch(() => {});
+                    } catch (_) {}
                 }
             });
             preset.addEventListener('mouseleave', () => {
                 if (!autoPlayCheckbox?.checked) {
-                    video.pause();
-                    video.currentTime = 0;
+                    try {
+                        video.pause();
+                        video.currentTime = 0;
+                    } catch (_) {}
                 }
             });
         });
@@ -294,8 +469,11 @@ document.addEventListener('DOMContentLoaded', function () {
         presets.forEach((preset) => {
             const file = preset.dataset.file;
             const checkbox = preset.querySelector('.favorite-check');
+            if (!checkbox) return;
             checkbox.checked = favorites.includes(file);
-            checkbox.addEventListener('change', () => toggleFavorite(file, checkbox.checked));
+            checkbox.addEventListener('change', function () {
+                toggleFavorite(file, this.checked);
+            });
         });
     }
 
@@ -314,9 +492,9 @@ document.addEventListener('DOMContentLoaded', function () {
         filtered
             .slice((page - 1) * itemsPerPage, page * itemsPerPage)
             .forEach((p) => (p.style.display = 'block'));
-        pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
-        prevPageBtn.disabled = currentPage === 1;
-        nextPageBtn.disabled = currentPage === totalPages;
+        if (pageInfo) pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+        if (prevPageBtn) prevPageBtn.disabled = currentPage === 1;
+        if (nextPageBtn) nextPageBtn.disabled = currentPage === totalPages;
         manageVideos();
     }
 
@@ -327,8 +505,16 @@ document.addEventListener('DOMContentLoaded', function () {
         );
         filtered.forEach((p) => {
             const v = p.querySelector('video');
-            if (autoPlayCheckbox?.checked) v.play().catch(() => {});
-            else v.pause();
+            if (!v) return;
+            if (autoPlayCheckbox?.checked) {
+                try {
+                    v.play().catch(() => {});
+                } catch (_) {}
+            } else {
+                try {
+                    v.pause();
+                } catch (_) {}
+            }
         });
     }
 
@@ -345,9 +531,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 presets.forEach((p) => p.classList.remove('selected'));
                 preset.classList.add('selected');
                 selectedPreset = preset.dataset.file;
-                status.textContent = `Selected: ${
-                    preset.querySelector('.preset-name').textContent
-                }`;
+                if (status) {
+                    status.textContent = `Selected: ${
+                        preset.querySelector('.preset-name').textContent
+                    }`;
+                }
             });
         });
     }
@@ -357,16 +545,17 @@ document.addEventListener('DOMContentLoaded', function () {
         const presetsContainer = document.querySelector('.presets');
         if (!presetsContainer) return;
 
-        let savedCols = parseInt(localStorage.getItem('gridCols')) || 2;
+        let savedCols = parseInt(localStorage.getItem('gridCols') || '2', 10);
         applyGrid(savedCols);
 
         gridButtons.forEach((btn) => {
-            if (parseInt(btn.dataset.cols) === savedCols) btn.classList.add('active');
+            if (parseInt(btn.dataset.cols, 10) === savedCols) btn.classList.add('active');
+
             btn.addEventListener('click', () => {
                 gridButtons.forEach((b) => b.classList.remove('active'));
                 btn.classList.add('active');
-                const cols = parseInt(btn.dataset.cols);
-                localStorage.setItem('gridCols', cols);
+                const cols = parseInt(btn.dataset.cols, 10);
+                localStorage.setItem('gridCols', String(cols));
                 applyGrid(cols);
             });
         });
@@ -374,27 +563,40 @@ document.addEventListener('DOMContentLoaded', function () {
         function applyGrid(cols) {
             presetsContainer.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
         }
+
+        window.addEventListener('resize', () => {
+            if (window.innerWidth <= 420) {
+                presetsContainer.style.gridTemplateColumns = 'repeat(1, 1fr)';
+            } else if (window.innerWidth <= 640) {
+                presetsContainer.style.gridTemplateColumns = 'repeat(2, 1fr)';
+            } else {
+                const cols = parseInt(localStorage.getItem('gridCols') || '2', 10);
+                presetsContainer.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+            }
+        });
     }
 
     async function applyPreset() {
         if (!selectedPreset) {
-            showCustomAlert('Please select a preset first!', false);
+            showCustomAlert('Avval preset tanlang!', false);
             return;
         }
 
         const remotePresetUrl = `${GITHUB_RAW}/presets/${selectedPreset}`;
         try {
-            const res = await fetch(remotePresetUrl);
-            if (!res.ok) throw new Error('Preset not found on GitHub');
+            const res = await fetch(remotePresetUrl, { cache: 'no-store' });
+            if (!res.ok) throw new Error('Preset GitHub’da topilmadi');
             const blob = await res.blob();
             const base64 = await blobToBase64(blob);
+
+            // Chunklab yozish
             const chunkSize = 20000;
             const chunks = [];
             for (let i = 0; i < base64.length; i += chunkSize) {
                 chunks.push(base64.slice(i, i + chunkSize));
             }
 
-            // Open file
+            // Temp fayl ochish
             const openScript = `
                 (function() {
                     try {
@@ -407,29 +609,31 @@ document.addEventListener('DOMContentLoaded', function () {
                     } catch(e) { return "Error: " + e; }
                 })();
             `;
-            const openResult = await new Promise((resolve) => {
-                csInterface.evalScript(openScript, resolve);
-            });
-            if (openResult.startsWith('Error:')) {
-                showCustomAlert(openResult, false);
+            const openResult = await new Promise((resolve) =>
+                csInterface.evalScript(openScript, resolve)
+            );
+            if (typeof openResult !== 'string' || openResult.indexOf('Error:') === 0) {
+                showCustomAlert(openResult || 'Error: temp fayl ochilmadi', false);
                 return;
             }
             const presetPath = openResult;
 
-            // Append chunks
+            // Bo‘laklarni yozish
             for (const chunk of chunks) {
                 const appendScript = `
                     (function() {
                         function b64decode(b64) {
                             var chars="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
                             var out="", buffer=0, bits=0, c;
-                            for (var i=0;i<b64.length;i++){c=b64.charAt(i);
+                            for (var i=0;i<b64.length;i++){
+                                c=b64.charAt(i);
                                 if(c==='=')break;
                                 var idx=chars.indexOf(c);
                                 if(idx===-1)continue;
                                 buffer=(buffer<<6)|idx; bits+=6;
                                 if(bits>=8){bits-=8;out+=String.fromCharCode((buffer>>bits)&0xFF);}
-                            } return out;
+                            }
+                            return out;
                         }
                         try {
                             var f = new File("${presetPath.replace(/\\/g, '\\\\')}");
@@ -442,16 +646,16 @@ document.addEventListener('DOMContentLoaded', function () {
                         } catch(e) { return "Error: " + e; }
                     })();
                 `;
-                const appendResult = await new Promise((resolve) => {
-                    csInterface.evalScript(appendScript, resolve);
-                });
+                const appendResult = await new Promise((resolve) =>
+                    csInterface.evalScript(appendScript, resolve)
+                );
                 if (appendResult !== 'OK') {
-                    showCustomAlert(appendResult, false);
+                    showCustomAlert(appendResult || 'Error: yozishda xato', false);
                     return;
                 }
             }
 
-            // Apply preset
+            // Presetni qo‘llash
             const applyScript = `
                 (function() {
                     try {
@@ -463,31 +667,30 @@ document.addEventListener('DOMContentLoaded', function () {
                         if (selectedLayers.length === 0) return "Error: Please select at least one layer";
                         var successCount = 0;
                         for (var i = 0; i < selectedLayers.length; i++) {
-                            var layer = selectedLayers[i];
-                            layer.applyPreset(f);
+                            selectedLayers[i].applyPreset(f);
                             successCount++;
                         }
-                        f.remove();
+                        try { f.remove(); } catch(_) {}
                         return "Success:" + successCount;
                     } catch(err) { return "Error: " + err.toString(); }
                 })();
             `;
             csInterface.evalScript(applyScript, (result) => {
-                if (result.startsWith('Success:')) {
-                    showCustomAlert('Applied to ' + result.split(':')[1] + ' layer(s)', true);
+                if (result && result.indexOf('Success:') === 0) {
+                    showCustomAlert('✅ ' + result.split(':')[1] + ' layer(lar)ga qo‘llandi', true);
                 } else {
-                    showCustomAlert(result, false);
+                    showCustomAlert(result || '❌ Noma’lum xato', false);
                 }
             });
         } catch (err) {
-            showCustomAlert('❌ Failed: ' + err.message, false);
+            showCustomAlert('❌ Yuklashda xato: ' + err.message, false);
         }
     }
 
     function blobToBase64(blob) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
-            reader.onload = () => resolve(reader.result.split(',')[1]);
+            reader.onload = () => resolve(String(reader.result).split(',')[1]);
             reader.onerror = reject;
             reader.readAsDataURL(blob);
         });
@@ -497,25 +700,29 @@ document.addEventListener('DOMContentLoaded', function () {
         const existing = document.querySelector('.custom-alert:not(.update)');
         if (existing) existing.remove();
         const videoPath = isSuccess
-            ? `${GITHUB_RAW}/assets/videos/gojo.mp4`
-            : `${GITHUB_RAW}/assets/videos/social.mp4`;
+            ? `${GITHUB_RAW}/assets/videos/gojo.mp4?v=${encodeURIComponent(
+                  localStorage.getItem(LS_LAST_APPLIED) || currentVersion
+              )}`
+            : `${GITHUB_RAW}/assets/videos/social.mp4?v=${encodeURIComponent(
+                  localStorage.getItem(LS_LAST_APPLIED) || currentVersion
+              )}`;
         const alertBox = document.createElement('div');
         alertBox.className = 'custom-alert';
         alertBox.innerHTML = `
             <div class="alert-content">
                 <div class="alert-icon">
                     <video autoplay muted loop playsinline class="alert-video">
-                        <source src="${videoPath}" type="video/mp4" />
+                        <source src="${videoPath}&t=${Date.now()}" type="video/mp4" />
                     </video>
                 </div>
                 <div class="alert-message">${message}</div>
                 <button class="alert-close">OK</button>
             </div>`;
         document.body.appendChild(alertBox);
-        setTimeout(() => alertBox.classList.add('visible'), 10);
+        requestAnimationFrame(() => alertBox.classList.add('visible'));
         alertBox.querySelector('.alert-close').onclick = () => {
             alertBox.classList.remove('visible');
-            setTimeout(() => alertBox.remove(), 300);
+            setTimeout(() => alertBox.remove(), 280);
         };
     }
 
@@ -529,7 +736,7 @@ document.addEventListener('DOMContentLoaded', function () {
         refreshBtn?.addEventListener('click', () => {
             selectedPreset = null;
             presets.forEach((p) => p.classList.remove('selected'));
-            status.textContent = 'No items selected';
+            if (status) status.textContent = 'No items selected';
             showPage(1);
         });
         applyBtn?.addEventListener('click', applyPreset);
@@ -546,16 +753,29 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function switchPack(type) {
+        if (currentPack === type) return;
+        // autoplay videolarni to‘xtatib, UI ni yangilaymiz
+        document.querySelectorAll('.preset video').forEach((v) => {
+            try {
+                v.pause();
+                v.currentTime = 0;
+            } catch (_) {}
+        });
         currentPack = type;
         localStorage.setItem('currentPack', type);
         updatePackUI();
         createPresets();
+        selectedPreset = null;
+        if (status) status.textContent = 'No items selected';
     }
 
     function switchTab(type) {
+        if (currentView === type) return;
         currentView = type;
-        allTab.classList.toggle('active', type === 'all');
-        favoritesTab.classList.toggle('active', type === 'favorites');
+        allTab?.classList.toggle('active', type === 'all');
+        favoritesTab?.classList.toggle('active', type === 'favorites');
+        selectedPreset = null;
+        if (status) status.textContent = 'No items selected';
         showPage(1);
     }
 });
