@@ -5,7 +5,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const GITHUB_RAW = 'https://raw.githubusercontent.com/Cyber05CC/darkpanel/main'; // Preset va videolar GitHub dan yuklanadi
     const VERCEL_BASE = 'https://darkpanel-coral.vercel.app'; // Vercel URL'ingizni qo'ying
     const UPDATE_URL = VERCEL_BASE + '/update.json'; // update.json Vercel dan yuklanadi (tezroq yangilanish uchun)
-    const BUNDLE_VERSION = '1.3';
+    const BUNDLE_VERSION = '1.0';
     const LS_INSTALLED = 'darkpanel_installed_version';
     const SUPPORTED_TEXT_FILES = ['index.html', 'css/style.css', 'js/main.js', 'CSXS/manifest.xml'];
     // -------------------------------------------------------
@@ -121,16 +121,17 @@ document.addEventListener('DOMContentLoaded', function () {
             setUpdateStatus('⏳ Loading...');
             try {
                 const ok = await tryWriteToExtension(files);
+                console.log('Write to disk success:', ok); // Logging qo'shdik muammoni tekshirish uchun
                 localStorage.setItem(LS_INSTALLED, version); // Versiyani har holda saqla
                 currentVersion = version;
                 updateVersionDisplay();
                 if (ok) {
-                    setUpdateStatus('✅ Updated! Reloading...');
+                    setUpdateStatus('✅ Updated! Reloading... Restart AE if changes not visible.');
                     setTimeout(() => location.reload(), 900);
                 } else {
                     await applyRemoteOverlay(files);
-                    setUpdateStatus('✅ Updated (overlay). Reloading...');
-                    setTimeout(() => location.reload(), 900); // Overlay da ham reload qo'shdik
+                    setUpdateStatus('✅ Updated (overlay). Restart After Effects to see changes.');
+                    setTimeout(() => location.reload(), 900); // Overlay da ham reload, lekin AE restart kerak
                 }
             } catch (err) {
                 console.error(err);
