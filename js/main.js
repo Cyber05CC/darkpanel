@@ -221,7 +221,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         const GITHUB_RAW = 'https://raw.githubusercontent.com/Cyber05CC/darkpanel/main';
         const VERCEL_BASE = 'https://darkpanel-coral.vercel.app';
         const UPDATE_URL = VERCEL_BASE + '/update.json';
-        const BUNDLE_VERSION = '1.1';
+        const BUNDLE_VERSION = '1.0';
         const LS_INSTALLED = 'darkpanel_installed_version';
         const LS_LAST_APPLIED = 'darkpanel_last_applied_version';
         const SUPPORTED_TEXT_FILES = [
