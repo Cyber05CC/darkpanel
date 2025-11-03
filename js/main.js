@@ -3,9 +3,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // ----------------------- CONFIG -----------------------
     const GITHUB_RAW = 'https://raw.githubusercontent.com/Cyber05CC/darkpanel/main'; // Preset va videolar GitHub dan yuklanadi
-    const VERCEL_BASE = 'https://darkpanel-coral.vercel.app/'; // Vercel URL'ingizni qo'ying
+    const VERCEL_BASE = 'https://darkpanel-coral.vercel.app'; // Vercel URL'ingizni qo'ying
     const UPDATE_URL = VERCEL_BASE + '/update.json'; // update.json Vercel dan yuklanadi (tezroq yangilanish uchun)
-    const BUNDLE_VERSION = '1.2';
+    const BUNDLE_VERSION = '1.3';
     const LS_INSTALLED = 'darkpanel_installed_version';
     const SUPPORTED_TEXT_FILES = ['index.html', 'css/style.css', 'js/main.js', 'CSXS/manifest.xml'];
     // -------------------------------------------------------
