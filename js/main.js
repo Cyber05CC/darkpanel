@@ -90,10 +90,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 showUpdatePopup(remote.version, remote.files);
             } else {
                 console.log('✅ Up to date:', installed);
-                updateVersionDisplay();
             }
         } catch (e) {
-            console.warn('❌ Update check xatosi:', e);
+            console.warn('❌ Update check error:', e);
         }
     }
 
@@ -104,121 +103,101 @@ document.addEventListener('DOMContentLoaded', function () {
         const popup = document.createElement('div');
         popup.className = 'custom-alert update visible';
         popup.innerHTML = `
-            <div class="alert-content">
-                <div class="alert-message">🆕 Yangi versiya topildi (v${version})</div>
-                <div style="display:flex;gap:10px;justify-content:center;margin-top:8px">
-                    <button id="updateNow" class="alert-close">Yangilash</button>
-                    <button id="updateLater" class="alert-close" style="background:#3b3b3b">Keyinroq</button>
-                </div>
+        <div class="alert-content">
+            <div class="alert-message">🆕 Yangi versiya (v${version}) mavjud!</div>
+            <div style="display:flex;gap:10px;justify-content:center;margin-top:8px">
+                <button id="updateNow" class="alert-close">Yangilash</button>
+                <button id="updateLater" class="alert-close" style="background:#3b3b3b">Keyinroq</button>
             </div>
-        `;
+        </div>
+    `;
         document.body.appendChild(popup);
 
         document.getElementById('updateLater').addEventListener('click', () => popup.remove());
 
         document.getElementById('updateNow').addEventListener('click', async () => {
-            setUpdateStatus('⏳ Yuklanmoqda...');
+            popup.querySelector('.alert-message').textContent = '⏳ Yuklanmoqda...';
             try {
-                clearOldCache();
                 const ok = await tryWriteToExtension(files);
                 localStorage.setItem(LS_INSTALLED, version);
-                currentVersion = version;
-                if (ok) {
-                    setUpdateStatus('✅ Yangilandi! Qayta yuklanmoqda...');
-                    setTimeout(() => location.reload(true), 1000);
-                } else {
-                    await applyRemoteOverlay(files);
-                    setUpdateStatus('✅ Overlay yangilandi, sahifa qayta yuklanmoqda...');
-                    setTimeout(() => location.reload(true), 1000);
-                }
+                popup.querySelector('.alert-message').textContent =
+                    '✅ Yangilandi! Panel qayta ishga tushmoqda...';
+                setTimeout(() => reloadExtension(), 1200);
             } catch (err) {
-                setUpdateStatus('❌ Xatolik: ' + err.message);
+                popup.querySelector('.alert-message').textContent = '❌ Xatolik: ' + err.message;
             }
         });
-
-        function setUpdateStatus(msg) {
-            popup.querySelector('.alert-message').textContent = msg;
-        }
-    }
-
-    function clearOldCache() {
-        Object.keys(localStorage).forEach((key) => {
-            if (key.startsWith('darkpanel') || key.startsWith('favorites')) {
-                localStorage.removeItem(key);
-            }
-        });
-        console.log('🧹 LocalStorage tozalandi');
     }
 
     async function tryWriteToExtension(files) {
         const extRoot = csInterface.getSystemPath(SystemPath.EXTENSION);
+        const ensureFolder = (path) => `
+        (function() {
+            var f = new Folder("${path}");
+            if (!f.exists) f.create();
+            return f.exists;
+        })();
+    `;
 
         for (const [rel, info] of Object.entries(files || {})) {
-            if (!SUPPORTED_TEXT_FILES.includes(rel)) continue;
-            const url = info.url + '?t=' + Date.now();
+            const url = info.url + '?v=' + Date.now();
             const text = await (await fetch(url, { cache: 'no-store' })).text();
 
-            const targetFile = `${extRoot}/${rel}`;
-            const wrote = await writeFileInChunks(targetFile, text);
-            if (!wrote) return false;
-        }
-        return true;
-    }
+            const dir = rel.split('/').slice(0, -1).join('/');
+            if (dir) {
+                const dirPath = `${extRoot}/${dir}`;
+                await new Promise((resolve) => {
+                    csInterface.evalScript(ensureFolder(dirPath), () => resolve(true));
+                });
+            }
 
-    async function writeFileInChunks(targetFile, text) {
-        const chunkSize = 30000;
-        for (let i = 0; i < text.length; i += chunkSize) {
-            const chunk = text.substring(i, i + chunkSize);
-            const mode = i === 0 ? 'w' : 'a';
-            const writeChunkScript = `
+            const target = `${extRoot}/${rel}`;
+            await new Promise((resolve) => {
+                const script = `
                 (function() {
                     try {
-                        var f = new File("${targetFile.replace(/"/g, '\\"')}");
+                        var f = new File("${target.replace(/"/g, '\\"')}");
                         f.encoding = "UTF-8";
-                        f.open("${mode}");
-                        f.write(${JSON.stringify(chunk)});
+                        f.open("w");
+                        f.write(${JSON.stringify(text)});
                         f.close();
                         return "OK";
                     } catch(e) { return "ERR:" + e; }
                 })();
             `;
-            const result = await new Promise((resolve) =>
-                csInterface.evalScript(writeChunkScript, (res) => resolve(res === 'OK'))
-            );
-            if (!result) return false;
+                csInterface.evalScript(script, (res) => resolve(res));
+            });
         }
+
         return true;
     }
 
-    async function applyRemoteOverlay(files) {
-        // CSS
-        if (files['css/style.css']) {
-            const link =
-                document.querySelector('link[rel="stylesheet"]') || document.createElement('link');
-            link.rel = 'stylesheet';
-            link.href = files['css/style.css'].url + '?t=' + Date.now();
-            document.head.appendChild(link);
-        }
+    // 🧠 Asosiy yangilik: panelni qayta ishga tushirish
+    function reloadExtension() {
+        // 1. LocalStorage va cache’ni tozalaymiz
+        localStorage.clear();
+        sessionStorage.clear();
 
-        // HTML
-        if (files['index.html']) {
+        // 2. CEP panelni o‘zini qayta ochish
+        csInterface.evalScript(
+            `
+        (function(){
             try {
-                const html = await (
-                    await fetch(files['index.html'].url + '?t=' + Date.now())
-                ).text();
-                const tmp = document.createElement('div');
-                tmp.innerHTML = html;
-                const newMain = tmp.querySelector('main');
-                const curMain = document.querySelector('main');
-                if (newMain && curMain) {
-                    curMain.innerHTML = newMain.innerHTML;
-                    console.log('🔄 UI yangilandi (overlay)');
-                    init();
+                var extPath = new File($.fileName).parent.fsName;
+                var mainHTML = extPath + "/index.html";
+                var f = new File(mainHTML);
+                if(f.exists) {
+                    app.scheduleTask('$.evalFile(\\'' + f.fsName + '\\')', 0, false);
                 }
-            } catch (e) {
-                console.log('⚠️ Overlay HTML yangilashda xato:', e);
-            }
-        }
+                return "Panel reloaded";
+            } catch(e) { return "Error: " + e; }
+        })();
+    `,
+            (res) => console.log('🔁 Reloaded:', res)
+        );
+
+        // 3. Agar AE panelni yopib ochmaydigan bo‘lsa, sahifani yangilaymiz
+        setTimeout(() => location.reload(true), 1500);
     }
     // ==========================================================
 
