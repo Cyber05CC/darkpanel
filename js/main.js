@@ -88,6 +88,55 @@ document.addEventListener('DOMContentLoaded', async function () {
         }
         return true;
     }
+    await renderKeyStatus();
+
+    async function renderKeyStatus() {
+        const key = localStorage.getItem(LOCAL_KEY);
+        if (!key) return;
+
+        const data = await readKey(key);
+        if (!data) return;
+
+        const el = document.createElement('div');
+        el.id = 'key-status';
+        el.style.cssText = `
+        position: fixed;
+        bottom: 14px;
+        left: 14px;
+        background: rgba(22,22,24,0.7);
+        border: 1px solid #2a2a2a;
+        color: #ccc;
+        font-family: Inter, system-ui, sans-serif;
+        font-size: 12px;
+        padding: 6px 10px;
+        border-radius: 8px;
+        backdrop-filter: blur(6px);
+        z-index: 99999;
+        transition: opacity 0.3s ease;
+    `;
+
+        const now = Date.now();
+
+        if (data.type === 'trial') {
+            const expiresAt = Number(data.expiresAt || 0);
+            if (!expiresAt) return;
+            const diff = expiresAt - now;
+            const days = Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+
+            if (diff <= 0) {
+                el.innerHTML = '❌ Trial expired';
+                el.style.color = '#ff5e5e';
+            } else {
+                el.innerHTML = `⏳ Trial: ${days} day${days > 1 ? 's' : ''} left`;
+                if (days <= 2) el.style.color = '#f5b400'; // ogohlantiruvchi sariq
+            }
+        } else if (data.type === 'lifetime') {
+            el.innerHTML = '💎 Lifetime license active';
+            el.style.color = '#6df76d';
+        }
+
+        document.body.appendChild(el);
+    }
 
     function renderActivationUI() {
         const overlay = document.createElement('div');
