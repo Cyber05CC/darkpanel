@@ -5,7 +5,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const GITHUB_RAW = 'https://raw.githubusercontent.com/Cyber05CC/darkpanel/main'; // Preset/video manzili
     const VERCEL_BASE = 'https://darkpanel-coral.vercel.app'; // update.json manzili (tez deploy)
     const UPDATE_URL = VERCEL_BASE + '/update.json';
-    const BUNDLE_VERSION = '1.2';
+    const BUNDLE_VERSION = '1.3';
     const LS_INSTALLED = 'darkpanel_installed_version';
     const LS_LAST_APPLIED = 'darkpanel_last_applied_version';
     const SUPPORTED_TEXT_FILES = ['index.html', 'css/style.css', 'js/main.js', 'CSXS/manifest.xml'];
