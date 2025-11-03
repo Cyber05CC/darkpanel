@@ -473,32 +473,43 @@ body {
     transform: scale(1.05);
 }
 /* NET ALERT */
+
 .net-alert {
     position: fixed;
-    top: 15px;
     left: 50%;
-    transform: translateX(-50%) translateY(-20px);
-    background: #ff5252;
-    color: #fff;
-    font-size: 14px;
-    padding: 18px 18px;
-    border-radius: 10px;
-    opacity: 0;
-    z-index: 99999;
-    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.3);
-    transition: all 0.3s ease;
-    width: 15rem;
+    transform: translateX(-50%) translateY(10px);
+    top: 20px;
+    background: rgba(25, 25, 25, 0.85);
+    color: #f2f2f2;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: Inter, system-ui, sans-serif;
     text-align: center;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(6px);
+    opacity: 0;
+    z-index: 9999;
+    transition: all 0.25s ease;
+    pointer-events: none;
+    max-width: 280px;
 }
+
+/* animatsiya ko‘rinishi */
 .net-alert.visible {
-    transform: translateX(-50%) translateY(0);
     opacity: 1;
+    transform: translateX(-50%) translateY(0);
 }
+
+/* turlarga ko‘ra rang */
+.net-alert.error {
+    background: rgba(70, 0, 0, 0.8);
+    border: 1px solid rgba(255, 70, 70, 0.4);
+    color: #ffbcbc;
+}
+
 .net-alert.success {
-    background: #00c853;
-}
-.net-alert-content {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    background: rgba(0, 60, 0, 0.85);
+    border: 1px solid rgba(90, 255, 90, 0.4);
+    color: #baffba;
 }

@@ -221,7 +221,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         const GITHUB_RAW = 'https://raw.githubusercontent.com/Cyber05CC/darkpanel/main';
         const VERCEL_BASE = 'https://darkpanel-coral.vercel.app';
         const UPDATE_URL = VERCEL_BASE + '/update.json';
-        const BUNDLE_VERSION = '1.1';
+        const BUNDLE_VERSION = '1.0';
         const LS_INSTALLED = 'darkpanel_installed_version';
         const LS_LAST_APPLIED = 'darkpanel_last_applied_version';
         const SUPPORTED_TEXT_FILES = [
@@ -269,40 +269,16 @@ document.addEventListener('DOMContentLoaded', async function () {
 
                 const alert = document.createElement('div');
                 alert.className = `net-alert ${type}`;
-                alert.style.cssText = `
-            position: fixed;
-            left: 50%;
-            transform: translateX(-50%);
-            bottom: 20px;
-            background: ${type === 'error' ? '#311' : '#133'};
-            color: #fff;
-            padding: 8px 14px;
-            border-radius: 8px;
-            font-size: 13px;
-            font-family: Inter, system-ui, sans-serif;
-            box-shadow: 0 0 10px rgba(0,0,0,0.4);
-            z-index: 9999;
-            opacity: 0;
-            transition: opacity .25s ease, transform .25s ease;
-            max-width: 280px;
-            text-align: center;
-        `;
-                alert.innerHTML = `<span style="white-space: nowrap;">${
-                    type === 'error' ? '📡' : '🌐'
-                } ${message}</span>`;
+                alert.innerHTML = `<span>${type === 'error' ? '📡' : '🌐'} ${message}</span>`;
                 document.body.appendChild(alert);
 
-                // Animatsiya chiqish
-                requestAnimationFrame(() => {
-                    alert.style.opacity = '1';
-                    alert.style.transform = 'translateX(-50%) translateY(-5px)';
-                });
+                // animatsiya chiqish
+                requestAnimationFrame(() => alert.classList.add('visible'));
 
-                // Yashirish
+                // avtomatik yashirish
                 setTimeout(
                     () => {
-                        alert.style.opacity = '0';
-                        alert.style.transform = 'translateX(-50%) translateY(10px)';
+                        alert.classList.remove('visible');
                         setTimeout(() => alert.remove(), 400);
                     },
                     type === 'error' ? 3500 : 1800
