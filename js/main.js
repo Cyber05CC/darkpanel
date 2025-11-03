@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // ----------------------- CONFIG -----------------------
     const GITHUB_RAW = 'https://raw.githubusercontent.com/Cyber05CC/darkpanel/main'; // 🔥 GitHub Raw manziling
     const UPDATE_URL = GITHUB_RAW + '/update.json'; // update.json ham GitHub'dan o'qiladi
-    const BUNDLE_VERSION = '1.2';
+    const BUNDLE_VERSION = '1.3';
     const LS_INSTALLED = 'darkpanel_installed_version';
     const SUPPORTED_TEXT_FILES = ['index.html', 'css/style.css', 'js/main.js', 'CSXS/manifest.xml'];
     // -------------------------------------------------------
@@ -30,7 +30,6 @@ document.addEventListener('DOMContentLoaded', function () {
     let currentPack = localStorage.getItem('currentPack') || 'text';
     let favorites = JSON.parse(localStorage.getItem('favorites')) || [];
     let presets = [];
-    let currentVersion = localStorage.getItem(LS_INSTALLED) || BUNDLE_VERSION;
 
     // -------------------- STARTUP --------------------
     setupConnectionWatcher();
@@ -122,8 +121,6 @@ document.addEventListener('DOMContentLoaded', function () {
                 const ok = await tryWriteToExtension(files);
                 if (ok) {
                     localStorage.setItem(LS_INSTALLED, version);
-                    currentVersion = version;
-                    updateVersionDisplay();
                     setUpdateStatus('✅ Updated! Reloading...');
                     setTimeout(() => location.reload(), 900);
                     return;
@@ -131,8 +128,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 await applyRemoteOverlay(files);
                 localStorage.setItem(LS_INSTALLED, version);
-                currentVersion = version;
-                updateVersionDisplay();
                 setUpdateStatus('✅ Updated (overlay). Refresh...');
             } catch (err) {
                 console.error(err);
@@ -255,23 +250,6 @@ document.addEventListener('DOMContentLoaded', function () {
         setupEventListeners();
         setupGridControl();
         if (status) status.textContent = 'No items selected';
-        updateVersionDisplay();
-    }
-
-    function updateVersionDisplay() {
-        let versionEl = document.getElementById('version-display');
-        if (!versionEl) {
-            versionEl = document.createElement('div');
-            versionEl.id = 'version-display';
-            versionEl.style.position = 'absolute';
-            versionEl.style.bottom = '10px';
-            versionEl.style.right = '10px';
-            versionEl.style.color = '#888';
-            versionEl.style.fontSize = '12px';
-            versionEl.style.opacity = '0.7';
-            document.body.appendChild(versionEl);
-        }
-        versionEl.textContent = `v${currentVersion}`;
     }
 
     function updatePackUI() {
