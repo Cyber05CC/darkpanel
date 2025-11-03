@@ -1,107 +1,183 @@
-document.addEventListener('DOMContentLoaded', function () {
+document.addEventListener('DOMContentLoaded', async function () {
     const csInterface = new CSInterface();
 
-    // ----------------------- CONFIG -----------------------
-    const GITHUB_RAW = 'https://raw.githubusercontent.com/Cyber05CC/darkpanel/main'; // Preset/video manzili
-    const VERCEL_BASE = 'https://darkpanel-coral.vercel.app'; // update.json manzili (tez deploy)
-    const UPDATE_URL = VERCEL_BASE + '/update.json';
-    const BUNDLE_VERSION = '1.2';
-    const LS_INSTALLED = 'darkpanel_installed_version';
-    const LS_LAST_APPLIED = 'darkpanel_last_applied_version';
-    const SUPPORTED_TEXT_FILES = ['index.html', 'css/style.css', 'js/main.js', 'CSXS/manifest.xml'];
+    // ================= FIREBASE CONFIG =================
+    const firebaseConfig = {
+        apiKey: 'AIzaSyC07km-qBiZkQnu-DtrpLIwVvbxjoMQzGg',
+        authDomain: 'darkpanelauth.firebaseapp.com',
+        databaseURL: 'https://darkpanelauth-default-rtdb.europe-west1.firebasedatabase.app',
+        projectId: 'darkpanelauth',
+        storageBucket: 'darkpanelauth.firebasestorage.app',
+        messagingSenderId: '315614713241',
+        appId: '1:315614713241:web:78121bfb3ee9258f3d2f08',
+    };
 
-    // UI elementlar
-    let selectedPreset = null;
-    const autoPlayCheckbox = document.getElementById('autoPlay');
-    const presetList = document.getElementById('presetList');
-    const prevPageBtn = document.getElementById('prevPage');
-    const nextPageBtn = document.getElementById('nextPage');
-    const pageInfo = document.getElementById('pageInfo');
-    const allTab = document.getElementById('allTab');
-    const favoritesTab = document.getElementById('favoritesTab');
-    const refreshBtn = document.getElementById('refresh');
-    const applyBtn = document.getElementById('apply');
-    const status = document.getElementById('status');
-    const textPackBtn = document.getElementById('textPackBtn');
-    const effectPackBtn = document.getElementById('effectPackBtn');
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const deviceId = csInterface.getSystemPath(SystemPath.USER_DATA);
 
-    // UI holat
-    const itemsPerPage = 10;
-    let currentPage = 1;
-    let totalPages = 1;
-    let currentView = 'all';
-    let currentPack = localStorage.getItem('currentPack') || 'text';
-    let favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
-    let presets = [];
-    let currentVersion = localStorage.getItem(LS_INSTALLED) || BUNDLE_VERSION;
+    // ================= LICENSE CHECK =================
+    async function checkKeyValidity() {
+        const savedKey = localStorage.getItem('activeKey');
+        if (!savedKey) return showKeyUI();
 
-    // -------------------- STARTUP --------------------
-    setupConnectionWatcher();
-    init();
-    safeCheckForUpdates();
-    // -------------------------------------------------
+        const keyRef = db.ref('keys/' + savedKey);
+        const snapshot = await keyRef.get();
+        if (!snapshot.exists()) return showKeyUI();
 
-    // ===================== INTERNET WATCHER =====================
-    function setupConnectionWatcher() {
-        function showConnectionAlert(message, type = 'error') {
-            const existing = document.querySelector('.net-alert');
-            if (existing) existing.remove();
+        const data = snapshot.val();
+        const now = new Date().toISOString();
 
-            const alert = document.createElement('div');
-            alert.className = `net-alert ${type}`;
-            alert.innerHTML = `
-                <div class="net-alert-content">
-                    ${type === 'error' ? '📡' : '🌐'} ${message}
-                </div>
-            `;
-            document.body.appendChild(alert);
-            requestAnimationFrame(() => alert.classList.add('visible'));
-            if (type === 'success') {
-                setTimeout(() => {
-                    alert.classList.remove('visible');
-                    setTimeout(() => alert.remove(), 400);
-                }, 1800);
-            }
+        if (data.deviceId && data.deviceId !== deviceId) {
+            alert('⚠️ Bu key boshqa PCda ishlatilgan!');
+            localStorage.removeItem('activeKey');
+            return showKeyUI();
         }
 
-        window.addEventListener('offline', () => {
-            showConnectionAlert('There is no internet.', 'error');
-        });
+        if (data.type === 'trial' && now > data.expiresAt) {
+            alert('⏰ 7 kunlik key muddati tugadi!');
+            localStorage.removeItem('activeKey');
+            return showKeyUI();
+        }
 
-        window.addEventListener('online', () => {
-            showConnectionAlert('Connecting...', 'success');
-            setTimeout(() => location.reload(true), 1200);
-        });
-
-        if (!navigator.onLine) showConnectionAlert('There is no internet.', 'error');
+        // Hammasi ok
+        initDarkPanel();
     }
-    // =============================================================
 
-    // ===================== UPDATE SYSTEM =====================
-    async function safeCheckForUpdates() {
-        try {
-            const res = await fetch(UPDATE_URL + '?t=' + Date.now(), { cache: 'no-store' });
-            if (!res.ok) throw new Error('update.json not found');
-            const remote = await res.json();
+    function showKeyUI() {
+        document.body.innerHTML = `
+            <div style="text-align:center;margin-top:100px;color:#fff;font-family:sans-serif;">
+                <h2>DarkPanel Aktivatsiyasi</h2>
+                <input id="keyInput" placeholder="Key kiriting..." style="padding:8px;border-radius:5px;width:220px;">
+                <button id="activateBtn" style="padding:8px 15px;margin-left:6px;">Activate</button>
+            </div>
+        `;
+        document.getElementById('activateBtn').addEventListener('click', activateKey);
+    }
 
-            const installed =
-                localStorage.getItem(LS_LAST_APPLIED) ||
-                localStorage.getItem(LS_INSTALLED) ||
-                BUNDLE_VERSION;
+    async function activateKey() {
+        const key = document.getElementById('keyInput').value.trim();
+        if (!key) return alert('❌ Iltimos key kiriting!');
 
-            if (remote?.version && remote.version !== installed) {
-                showUpdatePopup(remote.version, remote.files || {});
-            } else {
-                console.log('✅ Version is up to date:', installed);
-                currentVersion = installed;
-                updateVersionDisplay();
-                if (remote?.version && remote.version !== localStorage.getItem(LS_LAST_APPLIED)) {
-                    localStorage.removeItem('darkpanel_cache_bust');
-                    localStorage.setItem('darkpanel_cache_bust', Date.now());
+        const keyRef = db.ref('keys/' + key);
+        const snapshot = await keyRef.get();
+        if (!snapshot.exists()) return alert('❌ Noto‘g‘ri key!');
+
+        const data = snapshot.val();
+        const now = new Date().toISOString();
+
+        if (data.deviceId && data.deviceId !== deviceId) {
+            alert('⚠️ Bu key boshqa kompyuterda ishlatilgan!');
+            return;
+        }
+
+        if (data.type === 'trial' && now > data.expiresAt) {
+            alert('⏰ 7 kunlik key muddati tugagan!');
+            return;
+        }
+
+        if (!data.deviceId) await keyRef.update({ deviceId });
+
+        localStorage.setItem('activeKey', key);
+        alert('✅ DarkPanel muvaffaqiyatli aktivatsiya qilindi!');
+        location.reload();
+    }
+
+    // ================= DARKPANEL ASL KODI =================
+    async function initDarkPanel() {
+        // Quyida senga tegishli barcha kod o‘z joyida qoladi 🔥
+        const GITHUB_RAW = 'https://raw.githubusercontent.com/Cyber05CC/darkpanel/main';
+        const VERCEL_BASE = 'https://darkpanel-coral.vercel.app';
+        const UPDATE_URL = VERCEL_BASE + '/update.json';
+        const BUNDLE_VERSION = '1.2';
+        const LS_INSTALLED = 'darkpanel_installed_version';
+        const LS_LAST_APPLIED = 'darkpanel_last_applied_version';
+        const SUPPORTED_TEXT_FILES = [
+            'index.html',
+            'css/style.css',
+            'js/main.js',
+            'CSXS/manifest.xml',
+        ];
+
+        let selectedPreset = null;
+        const autoPlayCheckbox = document.getElementById('autoPlay');
+        const presetList = document.getElementById('presetList');
+        const prevPageBtn = document.getElementById('prevPage');
+        const nextPageBtn = document.getElementById('nextPage');
+        const pageInfo = document.getElementById('pageInfo');
+        const allTab = document.getElementById('allTab');
+        const favoritesTab = document.getElementById('favoritesTab');
+        const refreshBtn = document.getElementById('refresh');
+        const applyBtn = document.getElementById('apply');
+        const status = document.getElementById('status');
+        const textPackBtn = document.getElementById('textPackBtn');
+        const effectPackBtn = document.getElementById('effectPackBtn');
+
+        const itemsPerPage = 10;
+        let currentPage = 1;
+        let totalPages = 1;
+        let currentView = 'all';
+        let currentPack = localStorage.getItem('currentPack') || 'text';
+        let favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
+        let presets = [];
+        let currentVersion = localStorage.getItem(LS_INSTALLED) || BUNDLE_VERSION;
+
+        setupConnectionWatcher();
+        init();
+        safeCheckForUpdates();
+
+        function setupConnectionWatcher() {
+            function showConnectionAlert(message, type = 'error') {
+                const existing = document.querySelector('.net-alert');
+                if (existing) existing.remove();
+
+                const alert = document.createElement('div');
+                alert.className = `net-alert ${type}`;
+                alert.innerHTML = `
+                    <div class="net-alert-content">
+                        ${type === 'error' ? '📡' : '🌐'} ${message}
+                    </div>
+                `;
+                document.body.appendChild(alert);
+                requestAnimationFrame(() => alert.classList.add('visible'));
+                if (type === 'success') {
+                    setTimeout(() => {
+                        alert.classList.remove('visible');
+                        setTimeout(() => alert.remove(), 400);
+                    }, 1800);
                 }
             }
-        } catch (e) {
-            console.warn('❌ Update check error:', e);
+
+            window.addEventListener('offline', () => {
+                showConnectionAlert('There is no internet.', 'error');
+            });
+            window.addEventListener('online', () => {
+                showConnectionAlert('Connecting...', 'success');
+                setTimeout(() => location.reload(true), 1200);
+            });
+            if (!navigator.onLine) showConnectionAlert('There is no internet.', 'error');
+        }
+
+        async function safeCheckForUpdates() {
+            try {
+                const res = await fetch(UPDATE_URL + '?t=' + Date.now(), { cache: 'no-store' });
+                if (!res.ok) throw new Error('update.json not found');
+                const remote = await res.json();
+                const installed =
+                    localStorage.getItem(LS_LAST_APPLIED) ||
+                    localStorage.getItem(LS_INSTALLED) ||
+                    BUNDLE_VERSION;
+
+                if (remote?.version && remote.version !== installed) {
+                    showUpdatePopup(remote.version, remote.files || {});
+                } else {
+                    console.log('✅ Version is up to date:', installed);
+                    currentVersion = installed;
+                    updateVersionDisplay();
+                }
+            } catch (e) {
+                console.warn('❌ Update check error:', e);
+            }
         }
     }
 
@@ -795,4 +871,5 @@ document.addEventListener('DOMContentLoaded', function () {
         if (status) status.textContent = 'No items selected';
         showPage(1);
     }
+    checkKeyValidity();
 });
