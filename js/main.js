@@ -2,10 +2,10 @@ document.addEventListener('DOMContentLoaded', function () {
     const csInterface = new CSInterface();
 
     // ----------------------- CONFIG -----------------------
-    const GITHUB_RAW = 'https://raw.githubusercontent.com/Cyber05CC/darkpanel/main'; // Preset va videolar GitHub dan yuklanadi
-    const VERCEL_BASE = 'https://darkpanel-coral.vercel.app'; // Vercel URL'ingizni qo'ying
-    const UPDATE_URL = VERCEL_BASE + '/update.json'; // update.json Vercel dan yuklanadi (tezroq yangilanish uchun)
-    const BUNDLE_VERSION = '1.4';
+    const GITHUB_RAW = 'https://raw.githubusercontent.com/Cyber05CC/darkpanel/main';
+    const VERCEL_BASE = 'https://darkpanel-coral.vercel.app';
+    const UPDATE_URL = VERCEL_BASE + '/update.json';
+    const BUNDLE_VERSION = '1.0';
     const LS_INSTALLED = 'darkpanel_installed_version';
     const SUPPORTED_TEXT_FILES = ['index.html', 'css/style.css', 'js/main.js', 'CSXS/manifest.xml'];
     // -------------------------------------------------------
@@ -63,16 +63,16 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         window.addEventListener('offline', () => {
-            showConnectionAlert('Problem connecting to the Internet.', 'error');
+            showConnectionAlert('Internet uzildi.', 'error');
         });
 
         window.addEventListener('online', () => {
-            showConnectionAlert('Connecting', 'success');
-            setTimeout(() => location.reload(), 1500);
+            showConnectionAlert('Internet tiklandi, sahifa yangilanmoqda...', 'success');
+            setTimeout(() => location.reload(true), 1500);
         });
 
         if (!navigator.onLine) {
-            showConnectionAlert('Problem connecting to the Internet.', 'error');
+            showConnectionAlert('Internet ulanmagan.', 'error');
         }
     }
     // =============================================================
@@ -80,7 +80,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // ===================== UPDATE SYSTEM =====================
     async function safeCheckForUpdates() {
         try {
-            const res = await fetch(UPDATE_URL + '?t=' + Date.now());
+            const res = await fetch(UPDATE_URL + '?t=' + Date.now(), { cache: 'no-store' });
             if (!res.ok) throw new Error('update.json not found');
             const remote = await res.json();
 
@@ -89,7 +89,8 @@ document.addEventListener('DOMContentLoaded', function () {
             if (remote?.version && remote.version !== installed) {
                 showUpdatePopup(remote.version, remote.files);
             } else {
-                console.log('✅ Version updated:', installed);
+                console.log('✅ Up to date:', installed);
+                updateVersionDisplay();
             }
         } catch (e) {
             console.warn('❌ Update check xatosi:', e);
@@ -104,40 +105,34 @@ document.addEventListener('DOMContentLoaded', function () {
         popup.className = 'custom-alert update visible';
         popup.innerHTML = `
             <div class="alert-content">
-                <div class="alert-message">New version available (v${version})</div>
+                <div class="alert-message">🆕 Yangi versiya topildi (v${version})</div>
                 <div style="display:flex;gap:10px;justify-content:center;margin-top:8px">
-                    <button id="updateNow" class="alert-close">Update</button>
-                    <button id="updateLater" class="alert-close" style="background:#3b3b3b">Later</button>
+                    <button id="updateNow" class="alert-close">Yangilash</button>
+                    <button id="updateLater" class="alert-close" style="background:#3b3b3b">Keyinroq</button>
                 </div>
             </div>
         `;
         document.body.appendChild(popup);
 
-        document.getElementById('updateLater').addEventListener('click', () => {
-            popup.remove();
-        });
+        document.getElementById('updateLater').addEventListener('click', () => popup.remove());
 
         document.getElementById('updateNow').addEventListener('click', async () => {
-            setUpdateStatus('⏳ Loading...');
+            setUpdateStatus('⏳ Yuklanmoqda...');
             try {
+                clearOldCache();
                 const ok = await tryWriteToExtension(files);
-                localStorage.setItem(LS_INSTALLED, version); // Versiyani har holda saqla
+                localStorage.setItem(LS_INSTALLED, version);
                 currentVersion = version;
-                updateVersionDisplay();
                 if (ok) {
-                    setUpdateStatus('✅ Updated! Reloading...');
-                    setTimeout(() => location.reload(), 900);
+                    setUpdateStatus('✅ Yangilandi! Qayta yuklanmoqda...');
+                    setTimeout(() => location.reload(true), 1000);
                 } else {
                     await applyRemoteOverlay(files);
-                    setUpdateStatus('✅ Updated (overlay). Reloading...');
-                    setTimeout(() => {
-                        location.reload();
-                        init(); // Reload dan keyin qayta init chaqirish uchun, lekin reload dan keyin avto chaqiriladi
-                    }, 900); // Overlay da ham reload qo'shdik
+                    setUpdateStatus('✅ Overlay yangilandi, sahifa qayta yuklanmoqda...');
+                    setTimeout(() => location.reload(true), 1000);
                 }
             } catch (err) {
-                console.error(err);
-                setUpdateStatus('❌ Update error: ' + err.message);
+                setUpdateStatus('❌ Xatolik: ' + err.message);
             }
         });
 
@@ -146,41 +141,22 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
+    function clearOldCache() {
+        Object.keys(localStorage).forEach((key) => {
+            if (key.startsWith('darkpanel') || key.startsWith('favorites')) {
+                localStorage.removeItem(key);
+            }
+        });
+        console.log('🧹 LocalStorage tozalandi');
+    }
+
     async function tryWriteToExtension(files) {
         const extRoot = csInterface.getSystemPath(SystemPath.EXTENSION);
-
-        const ensureFoldersScript = (fullPath) => `
-            (function() {
-                function ensureFolder(path) {
-                    var parts = path.split(/[\\\/]/);
-                    var acc = parts.shift();
-                    while (parts.length) {
-                        acc += "/" + parts.shift();
-                        var f = new Folder(acc);
-                        if (!f.exists) { try { f.create(); } catch(e) { return "ERR:" + e; } }
-                    }
-                    return "OK";
-                }
-                return ensureFolder("${fullPath.replace(/"/g, '\\"')}");
-            })();
-        `;
 
         for (const [rel, info] of Object.entries(files || {})) {
             if (!SUPPORTED_TEXT_FILES.includes(rel)) continue;
             const url = info.url + '?t=' + Date.now();
-
-            const text = await (await fetch(url)).text();
-
-            const dir = rel.split('/').slice(0, -1).join('/');
-            if (dir) {
-                const targetDir = extRoot + '/' + dir;
-                const ok = await new Promise((resolve) => {
-                    csInterface.evalScript(ensureFoldersScript(targetDir), (res) =>
-                        resolve(res === 'OK')
-                    );
-                });
-                if (!ok) return false;
-            }
+            const text = await (await fetch(url, { cache: 'no-store' })).text();
 
             const targetFile = `${extRoot}/${rel}`;
             const wrote = await writeFileInChunks(targetFile, text);
@@ -191,13 +167,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     async function writeFileInChunks(targetFile, text) {
         const chunkSize = 30000;
-        const chunks = [];
         for (let i = 0; i < text.length; i += chunkSize) {
-            chunks.push(text.substring(i, i + chunkSize));
-        }
-
-        let mode = 'w';
-        for (const chunk of chunks) {
+            const chunk = text.substring(i, i + chunkSize);
+            const mode = i === 0 ? 'w' : 'a';
             const writeChunkScript = `
                 (function() {
                     try {
@@ -210,28 +182,25 @@ document.addEventListener('DOMContentLoaded', function () {
                     } catch(e) { return "ERR:" + e; }
                 })();
             `;
-            const result = await new Promise((resolve) => {
-                csInterface.evalScript(writeChunkScript, (res) => resolve(res === 'OK'));
-            });
+            const result = await new Promise((resolve) =>
+                csInterface.evalScript(writeChunkScript, (res) => resolve(res === 'OK'))
+            );
             if (!result) return false;
-            mode = 'a';
         }
         return true;
     }
 
     async function applyRemoteOverlay(files) {
+        // CSS
         if (files['css/style.css']) {
-            const id = 'overlay-style';
-            let link = document.getElementById(id);
-            if (!link) {
-                link = document.createElement('link');
-                link.rel = 'stylesheet';
-                link.id = id;
-                document.head.appendChild(link);
-            }
+            const link =
+                document.querySelector('link[rel="stylesheet"]') || document.createElement('link');
+            link.rel = 'stylesheet';
             link.href = files['css/style.css'].url + '?t=' + Date.now();
+            document.head.appendChild(link);
         }
 
+        // HTML
         if (files['index.html']) {
             try {
                 const html = await (
@@ -241,11 +210,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 tmp.innerHTML = html;
                 const newMain = tmp.querySelector('main');
                 const curMain = document.querySelector('main');
-                if (newMain && curMain) curMain.innerHTML = newMain.innerHTML;
-                // Yangi UI ni qayta init qilish
-                init(); // UI o'zgarishini darhol qayta yuklash uchun
+                if (newMain && curMain) {
+                    curMain.innerHTML = newMain.innerHTML;
+                    console.log('🔄 UI yangilandi (overlay)');
+                    init();
+                }
             } catch (e) {
-                console.log('Overlay HTML swap skipped:', e);
+                console.log('⚠️ Overlay HTML yangilashda xato:', e);
             }
         }
     }
