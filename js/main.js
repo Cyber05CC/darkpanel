@@ -1,22 +1,24 @@
-/* darkPanel main.js — FULL build (Firebase trial/lifetime activation + updater + preset apply fix)
-   Drop-in replacement for js/main.js. No changes required to index.html.
-*/
-document.addEventListener('DOMContentLoaded', async () => {
+/* darkPanel main.js — full build with Firebase key activation (trial + lifetime)
+ * Drop-in replacement for js/main.js
+ * index.html o'zgartirish talab qilinmaydi (Firebase SDK dinamically yuklanadi)
+ */
+
+document.addEventListener('DOMContentLoaded', async function () {
     'use strict';
 
-    // -------------------- Small helpers --------------------
+    // -------------------- Helpers --------------------
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-    const LOCAL_KEY = 'darkpanel_license_key';
+    const nowMs = () => Date.now();
 
     // CEP guard
     let csInterface = null;
     try {
         csInterface = new CSInterface();
     } catch (_) {
-        console.warn('CSInterface not available (preview mode).');
+        console.warn('CSInterface not available. Running in browser preview mode.');
     }
 
-    // -------------------- Load Firebase v8 (compat) --------------------
+    // -------------------- Firebase Loader (v8 compat) --------------------
     async function loadScript(src) {
         return new Promise((resolve, reject) => {
             const s = document.createElement('script');
@@ -26,7 +28,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             document.head.appendChild(s);
         });
     }
-    async function ensureFirebase() {
+
+    async function ensureFirebaseLoaded() {
         if (window.firebase?.apps?.length) return;
         await loadScript('https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js');
         await loadScript('https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js');
@@ -39,12 +42,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             messagingSenderId: '315614713241',
             appId: '1:315614713241:web:78121bfb3ee9258f3d2f08',
         };
-        firebase.initializeApp(firebaseConfig);
+        window.firebase.initializeApp(firebaseConfig);
     }
-    await ensureFirebase();
-    const db = firebase.database();
 
-    // -------------------- Device ID (stable per machine) --------------------
+    // -------------------- Device Fingerprint --------------------
     async function getDeviceId() {
         try {
             if (csInterface) {
@@ -53,97 +54,105 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         } catch (_) {}
         const ua = (navigator.userAgent || '') + (navigator.platform || '');
-        const dims = (screen?.width || 0) + 'x' + (screen?.height || 0);
+        const dims = (screen.width || 0) + 'x' + (screen.height || 0);
         return 'web_' + btoa(ua + '|' + dims);
     }
+
+    // -------------------- License Layer --------------------
+    const LOCAL_KEY = 'darkpanel_license_key';
+    await ensureFirebaseLoaded();
+    const db = firebase.database();
     const deviceId = await getDeviceId();
 
-    // -------------------- License storage + validation --------------------
     async function readKey(key) {
         try {
             const snap = await db.ref('keys/' + key).get();
-            return snap.exists() ? snap.val() : null;
+            if (!snap.exists()) return null;
+            return snap.val();
         } catch (e) {
             console.warn('Firebase read error:', e);
             return null;
         }
     }
+
     async function validateStoredKey() {
         const key = localStorage.getItem(LOCAL_KEY);
         if (!key) return false;
         const data = await readKey(key);
         if (!data) return false;
 
-        // Device binding
         if (data.deviceId && data.deviceId !== deviceId) return false;
-
-        // Trial window
         if (data.type === 'trial') {
-            const now = Date.now();
             const exp = Number(data.expiresAt || 0);
-            if (!exp || exp < now) return false;
+            if (!exp || exp < nowMs()) return false;
         }
         return true;
     }
 
-    function renderActivationOverlay() {
+    function renderActivationUI() {
+        // oldingi overlay bo'lsa tozalash
+        document.getElementById('dp-activation')?.remove();
+
         const overlay = document.createElement('div');
         overlay.id = 'dp-activation';
         overlay.style.cssText = `
             position:fixed;inset:0;background:#0f0f10;display:flex;align-items:center;justify-content:center;
-            z-index:999999;color:#fff;font-family:Inter,system-ui,Arial,sans-serif;
+            z-index:2147483647;color:#fff;font-family:Inter,system-ui,Arial,sans-serif;
         `;
         overlay.innerHTML = `
-            <div style="width:min(420px,92vw);padding:22px 20px;border:1px solid #2a2a2a;border-radius:14px;background:linear-gradient(180deg,#141416,#0f0f10)">
+            <div style="width:min(420px,90vw);padding:22px 20px;border:1px solid #2a2a2a;border-radius:14px;background:linear-gradient(180deg,#141416,#0f0f10)">
                 <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-                    <div style="width:32px;height:32px;border-radius:8px;background:#4a6cff;display:flex;align-items:center;justify-content:center;">🔐</div>
+                    <div style="width:32px;height:32px;border-radius:8px;background:#3537ff;display:flex;align-items:center;justify-content:center;">🔐</div>
                     <h2 style="margin:0;font-size:18px;font-weight:700">DarkPanel Activation</h2>
                 </div>
                 <p style="margin:6px 0 14px;color:#bdbdbd;font-size:12px">
-                    Enter your license key. Trial keys: 7 days / 1 device. Lifetime: binds to one device.
+                    Enter your license key. Trial keys work for 7 days on a single device. Lifetime keys bind to one device.
                 </p>
                 <input id="dp-key" placeholder="XXXX-XXXX-XXXX" spellcheck="false"
-                    style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid #2b2b2b;background:#131318;color:#eaeaea;outline:none;font-size:13px">
+                       style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid #2b2b2b;background:#131318;color:#eaeaea;outline:none;font-size:13px">
                 <div style="display:flex;gap:10px;margin-top:12px">
                     <button id="dp-activate" style="flex:1;padding:10px 12px;border:0;border-radius:10px;background:#4a6cff;color:#fff;font-weight:600;cursor:pointer">Activate</button>
-                    <button id="dp-close" style="padding:10px 12px;border:1px solid #2b2b2b;border-radius:10px;background:#16161a;color:#ddd;cursor:pointer">Close</button>
+                    <button id="dp-exit" style="padding:10px 12px;border:1px solid #2b2b2b;border-radius:10px;background:#16161a;color:#ddd;cursor:pointer">Close</button>
                 </div>
                 <div id="dp-msg" style="margin-top:10px;color:#9ca3af;font-size:12px;min-height:16px"></div>
             </div>
         `;
         document.body.appendChild(overlay);
 
-        document.getElementById('dp-close').onclick = () => {
-            document.getElementById('dp-msg').textContent = 'Activation required to continue.';
+        document.getElementById('dp-exit').onclick = () => {
+            // Foydalanuvchi yopsa ham overlay turadi (aktivatsiyasiz ishlatib bo'lmaydi)
+            const m = document.getElementById('dp-msg');
+            if (m) m.textContent = 'Activation required to continue.';
         };
 
         document.getElementById('dp-activate').onclick = async () => {
             const el = document.getElementById('dp-key');
             const msg = document.getElementById('dp-msg');
             const key = (el.value || '').trim();
-            if (!key) return (msg.textContent = 'Please paste your key.');
-
+            if (!key) {
+                msg.textContent = 'Please paste your key.';
+                return;
+            }
             msg.textContent = 'Checking key…';
             const data = await readKey(key);
             if (!data) {
                 msg.textContent = '❌ Invalid key.';
                 return;
             }
+            const now = nowMs();
 
-            const now = Date.now();
             if (data.deviceId && data.deviceId !== deviceId) {
                 msg.textContent = '⚠️ This key is already used on another device.';
                 return;
             }
 
             if (data.type === 'trial') {
-                let exp = Number(data.expiresAt || 0);
-                if (!exp) {
-                    exp = now + 7 * 24 * 60 * 60 * 1000;
-                    await db
-                        .ref('keys/' + key)
-                        .update({ deviceId, createdAt: now, expiresAt: exp });
-                } else if (exp < now) {
+                let expiresAt = Number(data.expiresAt || 0);
+                if (!expiresAt) {
+                    // birinchi aktivatsiya: hozirdan 7 kun
+                    expiresAt = now + 7 * 24 * 60 * 60 * 1000;
+                    await db.ref('keys/' + key).update({ deviceId, createdAt: now, expiresAt });
+                } else if (expiresAt < now) {
                     msg.textContent = '⏰ Trial expired.';
                     return;
                 } else {
@@ -157,21 +166,23 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             localStorage.setItem(LOCAL_KEY, key);
-            msg.textContent = '✅ Activated! Loading UI…';
-            await sleep(500);
-            overlay.remove();
+            msg.textContent = '✅ Activated! Loading…';
+            await sleep(400);
+            overlay.remove(); // UI yo'lini ochamiz
             startApp();
         };
     }
 
+    // Gate: valid key bo'lmasa overlay ko'rsatib, appni to'xtatamiz
     if (!(await validateStoredKey())) {
-        renderActivationOverlay();
-        return; // stop until activated
+        renderActivationUI();
+        return;
     }
 
-    // =================== MAIN APP ===================
+    // aks holda darhol appni ishga tushiramiz
     startApp();
 
+    // =================== APP (your original panel code) ===================
     function startApp() {
         // ----------------------- CONFIG -----------------------
         const GITHUB_RAW = 'https://raw.githubusercontent.com/Cyber05CC/darkpanel/main';
@@ -212,22 +223,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         let presets = [];
         let currentVersion = localStorage.getItem(LS_INSTALLED) || BUNDLE_VERSION;
 
-        // Boot
+        // -------------------- STARTUP --------------------
         setupConnectionWatcher();
         init();
         safeCheckForUpdates();
+        // -------------------------------------------------
 
-        // ----------- Network toasts -----------
+        // ===================== INTERNET WATCHER =====================
         function setupConnectionWatcher() {
             function toast(message, type = 'error') {
                 const old = document.querySelector('.net-alert');
                 if (old) old.remove();
                 const el = document.createElement('div');
-                el.className = 'net-alert';
-                el.style.cssText = `position:fixed;left:50%;transform:translateX(-50%);bottom:16px;padding:10px 14px;border-radius:10px;background:${
-                    type === 'error' ? '#311' : '#133'
-                };color:#fff;z-index:9999;opacity:0;transition:.25s`;
-                el.textContent = (type === 'error' ? '📡 ' : '🌐 ') + message;
+                el.className = 'net-alert ' + type;
+                el.style.cssText =
+                    'position:fixed;left:50%;transform:translateX(-50%);bottom:16px;padding:10px 14px;border-radius:10px;background:' +
+                    (type === 'error' ? '#311' : '#133') +
+                    ';color:#fff;z-index:9999;opacity:0;transition:.25s';
+                el.innerHTML = (type === 'error' ? '📡 ' : '🌐 ') + message;
                 document.body.appendChild(el);
                 requestAnimationFrame(() => (el.style.opacity = 1));
                 if (type === 'success') {
@@ -240,12 +253,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             window.addEventListener('offline', () => toast('There is no internet.', 'error'));
             window.addEventListener('online', () => {
                 toast('Connecting...', 'success');
-                setTimeout(() => location.reload(true), 1000);
+                setTimeout(() => location.reload(true), 1100);
             });
             if (!navigator.onLine) toast('There is no internet.', 'error');
         }
+        // =============================================================
 
-        // -------------------- Updater --------------------
+        // ===================== UPDATE SYSTEM =====================
         async function safeCheckForUpdates() {
             try {
                 const res = await fetch(UPDATE_URL + '?t=' + Date.now(), { cache: 'no-store' });
@@ -266,23 +280,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                         remote?.version &&
                         remote.version !== localStorage.getItem(LS_LAST_APPLIED)
                     ) {
-                        localStorage.setItem('darkpanel_cache_bust', Date.now());
+                        localStorage.setItem('darkpanel_cache_bust', String(Date.now()));
                     }
                 }
             } catch (e) {
-                console.warn('Update check error:', e);
+                console.warn('❌ Update check error:', e);
             }
         }
 
         function showUpdatePopup(version, files) {
-            const exist = document.querySelector('.custom-alert.update');
-            if (exist) exist.remove();
-
+            document.querySelector('.custom-alert.update')?.remove();
             const popup = document.createElement('div');
-            popup.className = 'custom-alert update';
-            popup.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:99999`;
+            popup.className = 'custom-alert update visible';
+            popup.style.cssText =
+                'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:99998';
             popup.innerHTML = `
-                <div style="background:#151518;border:1px solid #2b2b2b;border-radius:14px;padding:18px 16px;color:#eaeaea;min-width:280px;max-width:360px;">
+                <div class="alert-content" style="background:#151518;border:1px solid #2b2b2b;border-radius:14px;padding:18px 16px;color:#eaeaea;min-width:280px;max-width:360px;">
                     <div class="alert-message" style="font-weight:700">New version found (v${version})</div>
                     <div style="display:flex;gap:10px;justify-content:center;margin-top:12px">
                         <button id="updateNow" style="padding:8px 14px;border:0;border-radius:10px;background:#4a6cff;color:#fff;cursor:pointer">Update</button>
@@ -292,7 +305,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             document.body.appendChild(popup);
 
             document.getElementById('updateLater').onclick = () => popup.remove();
-
             document.getElementById('updateNow').onclick = async () => {
                 setStatus('Downloading…');
                 try {
@@ -308,7 +320,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         return;
                     }
                     await applyRemoteOverlay(files, version);
-                    setStatus('Overlay updated! Reloading UI…');
+                    setStatus('Overlay updated! Reloading…');
                     setTimeout(() => hardReloadUI(version), 700);
                 } catch (err) {
                     console.error(err);
@@ -324,8 +336,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         async function tryWriteToExtension(files) {
             if (!csInterface) return false;
             const extRoot = csInterface.getSystemPath(SystemPath.EXTENSION);
+
             const ensureFoldersScript = (fullPath) => `
-                (function () {
+                (function() {
                     function ensureFolder(path) {
                         var parts = path.split(/[\\\\\\/]/);
                         var acc = parts.shift();
@@ -337,7 +350,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                         return "OK";
                     }
                     return ensureFolder("${fullPath.replace(/"/g, '\\"')}");
-                })();`;
+                })();
+            `;
 
             for (const [rel, info] of Object.entries(files || {})) {
                 if (!SUPPORTED_TEXT_FILES.includes(rel)) continue;
@@ -354,6 +368,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     });
                     if (!ok) return false;
                 }
+
                 const targetFile = `${extRoot}/${rel}`;
                 const wrote = await writeFileInChunks(targetFile, text);
                 if (!wrote) return false;
@@ -365,57 +380,47 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!csInterface) return false;
             const chunkSize = 30000;
             const chunks = [];
-            for (let i = 0; i < text.length; i += chunkSize)
+            for (let i = 0; i < text.length; i += chunkSize) {
                 chunks.push(text.substring(i, i + chunkSize));
+            }
 
-            // First create/clear file with "w"
-            const createScript = `
-                (function(){
-                    try{
-                        var f=new File("${targetFile.replace(/"/g, '\\"')}");
-                        f.encoding="UTF-8";
-                        if(!f.open("w")) return "ERR:create";
-                        f.write("");
-                        f.close();
-                        return "OK";
-                    }catch(e){return "ERR:"+e;}
-                })();`;
-            const created = await new Promise((resolve) =>
-                csInterface.evalScript(createScript, (r) => resolve(r === 'OK'))
-            );
-            if (!created) return false;
-
-            // Append by using edit mode + seek to end (more reliable than "a" on some systems)
-            for (const chunk of chunks) {
-                const writeScript = `
-                    (function(){
-                        try{
-                            var f=new File("${targetFile.replace(/"/g, '\\"')}");
-                            f.encoding="UTF-8";
-                            if(!f.open("e")) return "ERR:open";
-                            f.seek(f.length, 0);
+            // FIRST chunk -> "w", others -> "a"
+            for (let idx = 0; idx < chunks.length; idx++) {
+                const mode = idx === 0 ? 'w' : 'a';
+                const chunk = chunks[idx];
+                const writeChunkScript = `
+                    (function() {
+                        try {
+                            var f = new File("${targetFile.replace(/"/g, '\\"')}");
+                            f.encoding = "UTF-8";
+                            if (!f.open("${mode}")) return "ERR:open";
                             f.write(${JSON.stringify(chunk)});
                             f.close();
                             return "OK";
-                        }catch(e){return "ERR:"+e;}
-                    })();`;
-                const ok = await new Promise((resolve) =>
-                    csInterface.evalScript(writeScript, (r) => resolve(r === 'OK'))
-                );
+                        } catch(e) { return "ERR:" + e; }
+                    })();
+                `;
+                const ok = await new Promise((resolve) => {
+                    csInterface.evalScript(writeChunkScript, (res) => resolve(res === 'OK'));
+                });
                 if (!ok) return false;
             }
             return true;
         }
 
-        // -------- Overlay hot-swap for index.html/css --------
+        // ------ Overlay: index.html & style.css hot-swap ------
         async function applyRemoteOverlay(files, version) {
-            if (files['css/style.css']) hotSwapCss(files['css/style.css'].url, version);
+            if (files['css/style.css']) {
+                hotSwapCss(files['css/style.css'].url, version);
+            }
             if (files['index.html']) {
                 try {
                     const html = await (
                         await fetch(
                             files['index.html'].url + '?v=' + version + '&t=' + Date.now(),
-                            { cache: 'no-store' }
+                            {
+                                cache: 'no-store',
+                            }
                         )
                     ).text();
                     const tmp = document.createElement('div');
@@ -435,6 +440,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             }
         }
+
         function hotSwapCss(remoteCssUrl, version) {
             const links = Array.from(document.querySelectorAll('link[rel="stylesheet"]'));
             let replaced = false;
@@ -452,15 +458,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 document.head.appendChild(link);
             }
         }
+
         function bustAllAssets(scopeEl, version) {
             const bust = (url) => {
                 if (!url) return url;
                 const sep = url.includes('?') ? '&' : '?';
                 return (
                     url +
-                    `${sep}v=${encodeURIComponent(version)}&cb=${
-                        localStorage.getItem('darkpanel_cache_bust') || Date.now()
-                    }`
+                    `${sep}v=${encodeURIComponent(version)}&cb=${localStorage.getItem(
+                        'darkpanel_cache_bust'
+                    )}`
                 );
             };
             scopeEl.querySelectorAll('img').forEach((img) => {
@@ -478,6 +485,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 } catch (_) {}
             });
         }
+
         function hardReloadExtension() {
             sessionStorage.clear();
             const keep = {
@@ -500,18 +508,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                 csInterface.evalScript(
                     `
                     (function(){
-                        try{
-                            var extPath=new File($.fileName).parent.fsName;
-                            var indexFile=new File(extPath + "/index.html");
-                            if(indexFile.exists) app.scheduleTask('$.evalFile(\\'' + indexFile.fsName + '\\')',0,false);
+                        try {
+                            var extPath = new File($.fileName).parent.fsName;
+                            var indexFile = new File(extPath + "/index.html");
+                            if(indexFile.exists){
+                                app.scheduleTask('$.evalFile(\\'' + indexFile.fsName + '\\')', 0, false);
+                            }
                             return "Panel restarted";
-                        }catch(e){return "Error: "+e;}
-                    })();`,
+                        } catch(e){ return "Error: " + e; }
+                    })();
+                `,
                     (res) => console.log('🔁 Reload:', res)
                 );
             }
-            setTimeout(() => location.reload(true), 800);
+            setTimeout(() => location.reload(true), 700);
         }
+
         function hardReloadUI(version) {
             const bustUrl = (url) => {
                 if (!url) return url;
@@ -522,10 +534,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 lnk.href = bustUrl(lnk.href);
             });
             bustAllAssets(document, version);
-            setTimeout(() => location.reload(true), 300);
+            setTimeout(() => location.reload(true), 250);
         }
+        // ==========================================================
 
-        // ---------------------- UI Logic ----------------------
+        // ---------------------- UI LOGIKA -------------------------
         function init() {
             updatePackUI();
             createPresets();
@@ -534,18 +547,25 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (status) status.textContent = 'No items selected';
             updateVersionDisplay();
         }
+
         function updateVersionDisplay() {
             let versionEl = document.getElementById('version-display');
             if (!versionEl) {
                 versionEl = document.createElement('div');
                 versionEl.id = 'version-display';
-                versionEl.style.cssText =
-                    'position:absolute;bottom:10px;right:10px;color:#888;font-size:12px;opacity:.7;pointer-events:none';
+                versionEl.style.position = 'absolute';
+                versionEl.style.bottom = '10px';
+                versionEl.style.right = '10px';
+                versionEl.style.color = '#888';
+                versionEl.style.fontSize = '12px';
+                versionEl.style.opacity = '0.7';
+                versionEl.style.pointerEvents = 'none';
                 document.body.appendChild(versionEl);
             }
             const shown = localStorage.getItem(LS_LAST_APPLIED) || currentVersion || BUNDLE_VERSION;
             versionEl.textContent = `v${shown}`;
         }
+
         function updatePackUI() {
             const packBtn = document.querySelector('.pack-btn');
             if (!packBtn) return;
@@ -559,6 +579,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 textPackBtn?.classList.remove('active');
             }
         }
+
         function createPresets() {
             if (!presetList) return;
             presetList.innerHTML = '';
@@ -569,6 +590,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const preset = document.createElement('div');
                 preset.className = 'preset';
                 preset.dataset.file = `${currentPack}_${i}.ffx`;
+
                 const videoSrc = `${GITHUB_RAW}/assets/videos/${currentPack}_${i}.mp4?v=${encodeURIComponent(
                     localStorage.getItem(LS_LAST_APPLIED) || currentVersion
                 )}&t=${Date.now()}`;
@@ -579,15 +601,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                         </video>
                         <input type="checkbox" class="favorite-check" data-file="${currentPack}_${i}.ffx">
                     </div>
-                    <div class="preset-name">${packType} ${i}</div>`;
+                    <div class="preset-name">${packType} ${i}</div>
+                `;
                 presetList.appendChild(preset);
             }
+
             presets = document.querySelectorAll('.preset');
             initializeFavorites();
             setupVideoHover();
             setupPresetSelection();
             showPage(1);
         }
+
         function setupVideoHover() {
             presets.forEach((preset) => {
                 const video = preset.querySelector('video');
@@ -609,6 +634,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 });
             });
         }
+
         function initializeFavorites() {
             presets.forEach((preset) => {
                 const file = preset.dataset.file;
@@ -620,12 +646,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 });
             });
         }
+
         function toggleFavorite(file, isFavorite) {
             if (isFavorite && !favorites.includes(file)) favorites.push(file);
             else if (!isFavorite) favorites = favorites.filter((f) => f !== file);
             localStorage.setItem('favorites', JSON.stringify(favorites));
             if (currentView === 'favorites') showPage(1);
         }
+
         function showPage(page) {
             const filtered = filterPresets();
             currentPage = page;
@@ -639,6 +667,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (nextPageBtn) nextPageBtn.disabled = currentPage === totalPages;
             manageVideos();
         }
+
         function manageVideos() {
             const filtered = filterPresets().slice(
                 (currentPage - 1) * itemsPerPage,
@@ -658,11 +687,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             });
         }
+
         function filterPresets() {
             return Array.from(presets).filter(
                 (preset) => currentView === 'all' || favorites.includes(preset.dataset.file)
             );
         }
+
         function setupPresetSelection() {
             presets.forEach((preset) => {
                 preset.addEventListener('click', (e) => {
@@ -670,13 +701,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                     presets.forEach((p) => p.classList.remove('selected'));
                     preset.classList.add('selected');
                     selectedPreset = preset.dataset.file;
-                    if (status)
+                    if (status) {
                         status.textContent = `Selected: ${
                             preset.querySelector('.preset-name').textContent
                         }`;
+                    }
                 });
             });
         }
+
         function setupGridControl() {
             const gridButtons = document.querySelectorAll('.grid-btn');
             const presetsContainer = document.querySelector('.presets');
@@ -687,6 +720,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             gridButtons.forEach((btn) => {
                 if (parseInt(btn.dataset.cols, 10) === savedCols) btn.classList.add('active');
+
                 btn.addEventListener('click', () => {
                     gridButtons.forEach((b) => b.classList.remove('active'));
                     btn.classList.add('active');
@@ -701,114 +735,135 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             window.addEventListener('resize', () => {
-                if (window.innerWidth <= 420)
+                if (window.innerWidth <= 420) {
                     presetsContainer.style.gridTemplateColumns = 'repeat(1, 1fr)';
-                else if (window.innerWidth <= 640)
+                } else if (window.innerWidth <= 640) {
                     presetsContainer.style.gridTemplateColumns = 'repeat(2, 1fr)';
-                else {
+                } else {
                     const cols = parseInt(localStorage.getItem('gridCols') || '2', 10);
                     presetsContainer.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
                 }
             });
         }
 
-        // ---------------- Preset apply (fixed append) ----------------
         async function applyPreset() {
             if (!selectedPreset) {
                 showCustomAlert('Choose a preset first!', false);
                 return;
             }
+            if (!csInterface) {
+                showCustomAlert('CSInterface not available (browser preview).', false);
+                return;
+            }
+
             const remotePresetUrl = `${GITHUB_RAW}/presets/${selectedPreset}`;
             try {
                 const res = await fetch(remotePresetUrl, { cache: 'no-store' });
-                if (!res.ok) throw new Error('Preset not found on GitHub');
+                if (!res.ok) throw new Error('Preset GitHub’da topilmadi');
                 const blob = await res.blob();
                 const base64 = await blobToBase64(blob);
 
+                // chunking
                 const chunkSize = 20000;
                 const chunks = [];
-                for (let i = 0; i < base64.length; i += chunkSize)
+                for (let i = 0; i < base64.length; i += chunkSize) {
                     chunks.push(base64.slice(i, i + chunkSize));
+                }
 
+                // create empty temp file
                 const openScript = `
-                    (function(){
-                        try{
-                            var presetPath = Folder.temp.fsName + "\\\\temp_darkpanel.ffx";
+                    (function() {
+                        try {
+                            var presetPath = Folder.temp.fsName + "/temp.ffx";
                             var f = new File(presetPath);
                             f.encoding = "BINARY";
-                            if(!f.open("w")) return "Error: Cannot open file for writing";
-                            f.write(""); f.close();
+                            if (!f.open("w")) return "Error: Cannot open file for writing";
+                            f.close();
                             return presetPath;
-                        }catch(e){ return "Error: " + e; }
-                    })();`;
+                        } catch(e) { return "Error: " + e; }
+                    })();
+                `;
                 const presetPath = await new Promise((resolve) =>
-                    csInterface
-                        ? csInterface.evalScript(openScript, resolve)
-                        : resolve('Error: CSInterface not available')
+                    csInterface.evalScript(openScript, resolve)
                 );
                 if (typeof presetPath !== 'string' || presetPath.indexOf('Error:') === 0) {
                     showCustomAlert(presetPath || 'Error: temp file create failed', false);
                     return;
                 }
 
-                for (const chunk of chunks) {
-                    const appendScript = `
-                        (function(){
-                            function b64decode(b64){
-                                var chars="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-                                var out="", buffer=0, bits=0, c;
-                                for (var i=0;i<b64.length;i++){
-                                    c=b64.charAt(i); if(c==='=')break;
-                                    var idx=chars.indexOf(c); if(idx===-1)continue;
-                                    buffer=(buffer<<6)|idx; bits+=6;
-                                    if(bits>=8){ bits-=8; out+=String.fromCharCode((buffer>>bits)&0xFF); }
-                                }
-                                return out;
-                            }
-                            try{
-                                var f = new File("${presetPath.replace(/\\/g, '\\\\')}");
-                                f.encoding = "BINARY";
-                                if(!f.open("e")) return "Error: Cannot open file for edit";
-                                f.seek(f.length, 0); // append safely
-                                var bin = b64decode('${chunk}');
-                                f.write(bin);
-                                f.close();
-                                return "OK";
-                            }catch(e){ return "Error: " + e; }
-                        })();`;
-                    const r = await new Promise((resolve) =>
-                        csInterface
-                            ? csInterface.evalScript(appendScript, resolve)
-                            : resolve('Error: CSInterface not available')
+                // write chunks (first "w", others "a") — with REAL values embedded
+                for (let idx = 0; idx < chunks.length; idx++) {
+                    const mode = idx === 0 ? 'w' : 'a';
+                    const chunk = chunks[idx];
+
+                    // inject real strings carefully
+                    const escPath = presetPath.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+                    const escChunk = chunk.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+
+                    const appendScript =
+                        '(function(){\n' +
+                        '  function b64decode(b64){\n' +
+                        '    var chars="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";\n' +
+                        '    var out="", buffer=0, bits=0, c, i;\n' +
+                        '    for(i=0;i<b64.length;i++){\n' +
+                        '      c=b64.charAt(i);\n' +
+                        '      if(c==="=") break;\n' +
+                        '      var idx=chars.indexOf(c);\n' +
+                        '      if(idx===-1) continue;\n' +
+                        '      buffer=(buffer<<6)|idx; bits+=6;\n' +
+                        '      if(bits>=8){bits-=8;out+=String.fromCharCode((buffer>>bits)&255);} \n' +
+                        '    }\n' +
+                        '    return out;\n' +
+                        '  }\n' +
+                        '  try{\n' +
+                        '    var f = new File("' +
+                        escPath +
+                        '");\n' +
+                        '    f.encoding = "BINARY";\n' +
+                        '    if(!f.open("' +
+                        mode +
+                        '")) return "Error: Cannot open file for ' +
+                        (mode === 'w' ? 'write' : 'append') +
+                        '";\n' +
+                        '    var bin = b64decode("' +
+                        escChunk +
+                        '");\n' +
+                        '    f.write(bin);\n' +
+                        '    f.close();\n' +
+                        '    return "OK";\n' +
+                        '  }catch(e){ return "Error: " + e; }\n' +
+                        '})();';
+
+                    const result = await new Promise((resolve) =>
+                        csInterface.evalScript(appendScript, resolve)
                     );
-                    if (r !== 'OK') {
-                        showCustomAlert(r || 'Error while writing chunk', false);
+                    if (result !== 'OK') {
+                        showCustomAlert(result || 'Error writing chunk', false);
                         return;
                     }
                 }
 
+                // apply preset
+                const escPathForApply = presetPath.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
                 const applyScript = `
-                    (function(){
-                        try{
-                            var f = new File("${presetPath.replace(/\\/g, '\\\\')}");
-                            if(!f.exists) return "Error: File not found";
+                    (function() {
+                        try {
+                            var f = new File("${escPathForApply}");
+                            if (!f.exists) return "Error: File not found";
                             var activeItem = app.project.activeItem;
-                            if(!activeItem || !(activeItem instanceof CompItem)) return "Error: No active composition";
+                            if (!activeItem || !(activeItem instanceof CompItem)) return "Error: No active composition";
                             var selectedLayers = activeItem.selectedLayers;
-                            if(selectedLayers.length === 0) return "Error: Please select at least one layer";
+                            if (selectedLayers.length === 0) return "Error: Please select at least one layer";
                             var successCount = 0;
-                            for (var i=0;i<selectedLayers.length;i++){
+                            for (var i = 0; i < selectedLayers.length; i++) {
                                 selectedLayers[i].applyPreset(f);
                                 successCount++;
                             }
-                            try{ f.remove(); }catch(_){}
+                            try { f.remove(); } catch(_) {}
                             return "Success:" + successCount;
-                        }catch(err){ return "Error: " + err.toString(); }
-                    })();`;
-                if (!csInterface) {
-                    showCustomAlert('CSInterface not available (preview).', false);
-                    return;
-                }
+                        } catch(err) { return "Error: " + err.toString(); }
+                    })();
+                `;
                 csInterface.evalScript(applyScript, (result) => {
                     if (result && result.indexOf('Success:') === 0) {
                         showCustomAlert(' ' + result.split(':')[1] + ' Applied to layer', true);
@@ -829,9 +884,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 reader.readAsDataURL(blob);
             });
         }
+
         function showCustomAlert(message, isSuccess) {
-            const existing = document.querySelector('.custom-alert:not(.update)');
-            if (existing) existing.remove();
+            document.querySelector('.custom-alert:not(.update)')?.remove();
             const videoPath = isSuccess
                 ? `${GITHUB_RAW}/assets/videos/gojo.mp4?v=${encodeURIComponent(
                       localStorage.getItem(LS_LAST_APPLIED) || currentVersion
@@ -839,26 +894,26 @@ document.addEventListener('DOMContentLoaded', async () => {
                 : `${GITHUB_RAW}/assets/videos/social.mp4?v=${encodeURIComponent(
                       localStorage.getItem(LS_LAST_APPLIED) || currentVersion
                   )}`;
-            const box = document.createElement('div');
-            box.className = 'custom-alert';
-            box.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:99998`;
-            box.innerHTML = `
-                <div style="background:#141416;border:1px solid #2b2b2b;border-radius:14px;padding:16px 14px;color:#eaeaea;min-width:260px;max-width:360px;">
-                    <div style="margin-bottom:8px">
-                        <video autoplay muted loop playsinline style="width:100%;border-radius:10px;display:block">
+            const alertBox = document.createElement('div');
+            alertBox.className = 'custom-alert';
+            alertBox.style.cssText =
+                'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:99997';
+            alertBox.innerHTML = `
+                <div class="alert-content" style="background:#141416;border:1px solid #2b2b2b;border-radius:14px;padding:16px 14px;color:#eaeaea;min-width:260px;max-width:360px;">
+                    <div class="alert-icon" style="margin-bottom:8px">
+                        <video autoplay muted loop playsinline class="alert-video" style="width:100%;border-radius:10px;display:block">
                             <source src="${videoPath}&t=${Date.now()}" type="video/mp4" />
                         </video>
                     </div>
-                    <div style="font-weight:600;margin-bottom:10px">${message}</div>
+                    <div class="alert-message" style="font-weight:600;margin-bottom:10px">${message}</div>
                     <button class="alert-close" style="padding:8px 14px;border:0;border-radius:10px;background:#4a6cff;color:#fff;cursor:pointer;width:100%">OK</button>
                 </div>`;
-            document.body.appendChild(box);
-            box.querySelector('.alert-close').onclick = () => {
-                box.remove();
+            document.body.appendChild(alertBox);
+            alertBox.querySelector('.alert-close').onclick = () => {
+                alertBox.remove();
             };
         }
 
-        // ---------------- Events ----------------
         function setupEventListeners() {
             autoPlayCheckbox?.addEventListener('change', manageVideos);
             prevPageBtn?.addEventListener(
@@ -887,6 +942,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 switchPack('effect');
             });
         }
+
         function switchPack(type) {
             if (currentPack === type) return;
             document.querySelectorAll('.preset video').forEach((v) => {
@@ -902,6 +958,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             selectedPreset = null;
             if (status) status.textContent = 'No items selected';
         }
+
         function switchTab(type) {
             if (currentView === type) return;
             currentView = type;
