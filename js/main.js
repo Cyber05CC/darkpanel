@@ -7,7 +7,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         authDomain: 'darkpanelauth.firebaseapp.com',
         databaseURL: 'https://darkpanelauth-default-rtdb.europe-west1.firebasedatabase.app',
         projectId: 'darkpanelauth',
-        storageBucket: 'darkpanelauth.firebasestorage.app',
+        storageBucket: 'darkpanelauth.appspot.com',
         messagingSenderId: '315614713241',
         appId: '1:315614713241:web:78121bfb3ee9258f3d2f08',
     };
@@ -89,7 +89,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         const GITHUB_RAW = 'https://raw.githubusercontent.com/Cyber05CC/darkpanel/main';
         const VERCEL_BASE = 'https://darkpanel-coral.vercel.app';
         const UPDATE_URL = VERCEL_BASE + '/update.json';
-        const BUNDLE_VERSION = '1.2';
+        const BUNDLE_VERSION = '1.3';
         const LS_INSTALLED = 'darkpanel_installed_version';
         const LS_LAST_APPLIED = 'darkpanel_last_applied_version';
         const SUPPORTED_TEXT_FILES = [
