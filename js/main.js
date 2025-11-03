@@ -221,7 +221,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         const GITHUB_RAW = 'https://raw.githubusercontent.com/Cyber05CC/darkpanel/main';
         const VERCEL_BASE = 'https://darkpanel-coral.vercel.app';
         const UPDATE_URL = VERCEL_BASE + '/update.json';
-        const BUNDLE_VERSION = '1.0';
+        const BUNDLE_VERSION = '1.1';
         const LS_INSTALLED = 'darkpanel_installed_version';
         const LS_LAST_APPLIED = 'darkpanel_last_applied_version';
         const SUPPORTED_TEXT_FILES = [
@@ -266,22 +266,47 @@ document.addEventListener('DOMContentLoaded', async function () {
             function showConnectionAlert(message, type = 'error') {
                 const existing = document.querySelector('.net-alert');
                 if (existing) existing.remove();
+
                 const alert = document.createElement('div');
                 alert.className = `net-alert ${type}`;
-                alert.style.cssText = `position:fixed;left:50%;transform:translateX(-50%);bottom:16px;padding:10px 14px;border-radius:10px;background:${
-                    type === 'error' ? '#311' : '#133'
-                };color:#fff;z-index:9999;opacity:0;transition:.25s`;
-                alert.innerHTML = `<div class="net-alert-content">${
+                alert.style.cssText = `
+            position: fixed;
+            left: 50%;
+            transform: translateX(-50%);
+            bottom: 20px;
+            background: ${type === 'error' ? '#311' : '#133'};
+            color: #fff;
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-family: Inter, system-ui, sans-serif;
+            box-shadow: 0 0 10px rgba(0,0,0,0.4);
+            z-index: 9999;
+            opacity: 0;
+            transition: opacity .25s ease, transform .25s ease;
+            max-width: 280px;
+            text-align: center;
+        `;
+                alert.innerHTML = `<span style="white-space: nowrap;">${
                     type === 'error' ? '📡' : '🌐'
-                } ${message}</div>`;
+                } ${message}</span>`;
                 document.body.appendChild(alert);
-                requestAnimationFrame(() => (alert.style.opacity = 1));
-                if (type === 'success') {
-                    setTimeout(() => {
-                        alert.style.opacity = 0;
+
+                // Animatsiya chiqish
+                requestAnimationFrame(() => {
+                    alert.style.opacity = '1';
+                    alert.style.transform = 'translateX(-50%) translateY(-5px)';
+                });
+
+                // Yashirish
+                setTimeout(
+                    () => {
+                        alert.style.opacity = '0';
+                        alert.style.transform = 'translateX(-50%) translateY(10px)';
                         setTimeout(() => alert.remove(), 400);
-                    }, 1800);
-                }
+                    },
+                    type === 'error' ? 3500 : 1800
+                );
             }
 
             window.addEventListener('offline', () => {
@@ -289,8 +314,8 @@ document.addEventListener('DOMContentLoaded', async function () {
             });
 
             window.addEventListener('online', () => {
-                showConnectionAlert('Connecting...', 'success');
-                setTimeout(() => location.reload(true), 1200);
+                showConnectionAlert('Connected', 'success');
+                setTimeout(() => location.reload(true), 1000);
             });
 
             if (!navigator.onLine) showConnectionAlert('There is no internet.', 'error');
