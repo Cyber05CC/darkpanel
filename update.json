@@ -1,17 +1,17 @@
 {
-    "version": "1.2",
+    "version": "1.0",
     "files": {
         "index.html": {
-            "url": "https://raw.githubusercontent.com/Cyber05CC/darkpanel/refs/heads/main/index.html"
+            "url": "https://raw.githubusercontent.com/Cyber05CC/darkpanel/main/index.html"
         },
         "css/style.css": {
-            "url": "https://raw.githubusercontent.com/Cyber05CC/darkpanel/refs/heads/main/css/style.css"
+            "url": "https://raw.githubusercontent.com/Cyber05CC/darkpanel/main/css/style.css"
         },
         "js/main.js": {
-            "url": "https://raw.githubusercontent.com/Cyber05CC/darkpanel/refs/heads/main/js/main.js"
+            "url": "https://raw.githubusercontent.com/Cyber05CC/darkpanel/main/js/main.js"
         },
         "CSXS/manifest.xml": {
-            "url": "https://raw.githubusercontent.com/Cyber05CC/darkpanel/refs/heads/main/CSXS/manifest.xml"
+            "url": "https://raw.githubusercontent.com/Cyber05CC/darkpanel/main/CSXS/manifest.xml"
         }
     }
 }
