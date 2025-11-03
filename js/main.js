@@ -5,7 +5,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const GITHUB_RAW = 'https://raw.githubusercontent.com/Cyber05CC/darkpanel/main'; // Preset/video manzili
     const VERCEL_BASE = 'https://darkpanel-coral.vercel.app'; // update.json manzili (tez deploy)
     const UPDATE_URL = VERCEL_BASE + '/update.json';
-    const BUNDLE_VERSION = '1.0';
+    const BUNDLE_VERSION = '1.1';
     const LS_INSTALLED = 'darkpanel_installed_version';
     const LS_LAST_APPLIED = 'darkpanel_last_applied_version';
     const SUPPORTED_TEXT_FILES = ['index.html', 'css/style.css', 'js/main.js', 'CSXS/manifest.xml'];
@@ -65,15 +65,15 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         window.addEventListener('offline', () => {
-            showConnectionAlert('Internet uzildi.', 'error');
+            showConnectionAlert('There is no internet.', 'error');
         });
 
         window.addEventListener('online', () => {
-            showConnectionAlert('Internet tiklandi. Sahifa yangilanmoqda...', 'success');
+            showConnectionAlert('Connecting...', 'success');
             setTimeout(() => location.reload(true), 1200);
         });
 
-        if (!navigator.onLine) showConnectionAlert('Internet ulanmagan.', 'error');
+        if (!navigator.onLine) showConnectionAlert('There is no internet.', 'error');
     }
     // =============================================================
 
@@ -81,7 +81,7 @@ document.addEventListener('DOMContentLoaded', function () {
     async function safeCheckForUpdates() {
         try {
             const res = await fetch(UPDATE_URL + '?t=' + Date.now(), { cache: 'no-store' });
-            if (!res.ok) throw new Error('update.json topilmadi');
+            if (!res.ok) throw new Error('update.json not found');
             const remote = await res.json();
 
             const installed =
@@ -92,7 +92,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (remote?.version && remote.version !== installed) {
                 showUpdatePopup(remote.version, remote.files || {});
             } else {
-                console.log('✅ Versiya dolzarb:', installed);
+                console.log('✅ Version is up to date:', installed);
                 currentVersion = installed;
                 updateVersionDisplay();
                 if (remote?.version && remote.version !== localStorage.getItem(LS_LAST_APPLIED)) {
@@ -101,7 +101,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
             }
         } catch (e) {
-            console.warn('❌ Update check xatosi:', e);
+            console.warn('❌ Update check error:', e);
         }
     }
 
@@ -113,10 +113,10 @@ document.addEventListener('DOMContentLoaded', function () {
         popup.className = 'custom-alert update visible';
         popup.innerHTML = `
             <div class="alert-content">
-                <div class="alert-message">🆕 Yangi versiya topildi (v${version})</div>
+                <div class="alert-message">New version found (v${version})</div>
                 <div style="display:flex;gap:10px;justify-content:center;margin-top:8px">
-                    <button id="updateNow" class="alert-close">Yangilash</button>
-                    <button id="updateLater" class="alert-close" style="background:#3b3b3b">Keyinroq</button>
+                    <button id="updateNow" class="alert-close">Update</button>
+                    <button id="updateLater" class="alert-close" style="background:#3b3b3b">Later</button>
                 </div>
             </div>
         `;
@@ -125,7 +125,7 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('updateLater').addEventListener('click', () => popup.remove());
 
         document.getElementById('updateNow').addEventListener('click', async () => {
-            setUpdateStatus('⏳ Yuklanmoqda...');
+            setUpdateStatus('Downloading...');
             try {
                 // 1) Extension papkaga yozishga urinamiz
                 const ok = await tryWriteToExtension(files);
@@ -136,7 +136,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 updateVersionDisplay();
 
                 if (ok) {
-                    setUpdateStatus('✅ Yangilandi! Panel qayta ishga tushmoqda…');
+                    setUpdateStatus('Updated! The panel is restarting...');
                     // lokal fayllar o‘zgargan — toza start uchun reload
                     setTimeout(() => hardReloadExtension(), 1000);
                     return;
@@ -144,14 +144,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 // 2) Yozish imkoni bo‘lmasa — overlay hot-swap (index.html & css)
                 await applyRemoteOverlay(files, version);
-                setUpdateStatus('✅ Overlay yangilandi! UI qayta yuklanmoqda…');
+                setUpdateStatus('Overlay updated! Reloading UI…');
                 setTimeout(() => {
                     // to‘liq tozalanish + yangi resurslar bilan yuklash
                     hardReloadUI(version);
                 }, 900);
             } catch (err) {
                 console.error(err);
-                setUpdateStatus('❌ Yangilashda xato: ' + err.message);
+                setUpdateStatus('Update error: ' + err.message);
             }
         });
 
@@ -595,7 +595,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     async function applyPreset() {
         if (!selectedPreset) {
-            showCustomAlert('Avval preset tanlang!', false);
+            showCustomAlert('Choose a preset first!', false);
             return;
         }
 
@@ -694,13 +694,13 @@ document.addEventListener('DOMContentLoaded', function () {
             `;
             csInterface.evalScript(applyScript, (result) => {
                 if (result && result.indexOf('Success:') === 0) {
-                    showCustomAlert('✅ ' + result.split(':')[1] + ' layer(lar)ga qo‘llandi', true);
+                    showCustomAlert(' ' + result.split(':')[1] + ' Applied to layer', true);
                 } else {
-                    showCustomAlert(result || '❌ Noma’lum xato', false);
+                    showCustomAlert(result || 'Unknown error', false);
                 }
             });
         } catch (err) {
-            showCustomAlert('❌ Yuklashda xato: ' + err.message, false);
+            showCustomAlert('Error loading: ' + err.message, false);
         }
     }
 
