@@ -84,13 +84,21 @@ document.addEventListener('DOMContentLoaded', function () {
             if (!res.ok) throw new Error('update.json topilmadi');
             const remote = await res.json();
 
-            const installed = localStorage.getItem(LS_INSTALLED) || BUNDLE_VERSION;
+            const installed =
+                localStorage.getItem(LS_LAST_APPLIED) ||
+                localStorage.getItem(LS_INSTALLED) ||
+                BUNDLE_VERSION;
+
             if (remote?.version && remote.version !== installed) {
                 showUpdatePopup(remote.version, remote.files || {});
             } else {
                 console.log('✅ Versiya dolzarb:', installed);
                 currentVersion = installed;
                 updateVersionDisplay();
+                if (remote?.version && remote.version !== localStorage.getItem(LS_LAST_APPLIED)) {
+                    localStorage.removeItem('darkpanel_cache_bust');
+                    localStorage.setItem('darkpanel_cache_bust', Date.now());
+                }
             }
         } catch (e) {
             console.warn('❌ Update check xatosi:', e);
@@ -253,6 +261,10 @@ document.addEventListener('DOMContentLoaded', function () {
                     bustAllAssets(curMain, version);
                 }
                 // UI ni qayta bog‘lash
+                localStorage.setItem(LS_LAST_APPLIED, version);
+                currentVersion = version;
+                updateVersionDisplay();
+
                 init();
             } catch (e) {
                 console.log('Overlay HTML swap skipped:', e);
@@ -287,7 +299,12 @@ document.addEventListener('DOMContentLoaded', function () {
         const bust = (url) => {
             if (!url) return url;
             const sep = url.includes('?') ? '&' : '?';
-            return url + `${sep}v=${encodeURIComponent(version)}&t=${Date.now()}`;
+            return (
+                url +
+                `${sep}v=${encodeURIComponent(version)}&cb=${localStorage.getItem(
+                    'darkpanel_cache_bust'
+                )}`
+            );
         };
 
         scopeEl.querySelectorAll('img').forEach((img) => {
