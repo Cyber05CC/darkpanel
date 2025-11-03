@@ -818,10 +818,10 @@ document.addEventListener('DOMContentLoaded', async function () {
                                 return out;
                             }
                             try {
-                                var f = new File("${presetPath.replace(/\\/g, '\\\\')}");
+                                var f = new File("${'${presetPath}'.replace(/\\/g, '\\\\')}");
                                 f.encoding = "BINARY";
                                 if (!f.open("a")) return "Error: Cannot open file for append";
-                                var bin = b64decode('${chunk}');
+                                var bin = b64decode('${'${chunk}'}');
                                 f.write(bin);
                                 f.close();
                                 return "OK";
@@ -842,7 +842,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                 const applyScript = `
                     (function() {
                         try {
-                            var f = new File("${presetPath.replace(/\\/g, '\\\\')}");
+                            var f = new File("${'${presetPath}'.replace(/\\/g, '\\\\')}");
                             if (!f.exists) return "Error: File not found";
                             var activeItem = app.project.activeItem;
                             if (!activeItem || !(activeItem instanceof CompItem)) return "Error: No active composition";
