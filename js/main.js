@@ -149,9 +149,9 @@ document.addEventListener('DOMContentLoaded', async function () {
             <div style="width:min(420px,90vw);padding:22px 20px;border:1px solid #2a2a2a;border-radius:14px;background:linear-gradient(180deg,#141416,#0f0f10)">
                 <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
                     <div style="width:32px;height:32px;border-radius:8px;background:#3537ff;display:flex;align-items:center;justify-content:center;">🔐</div>
-                    <h2 style="margin:0;font-size:18px;font-weight:700">DarkPanel Activation</h2>
+                    <h2 style="margin:0;font-size:18px;font-weight:700">dark panel Activation</h2>
                 </div>
-                <p style="margin:6px 0 14px;color:#bdbdbd;font-size:12px">Enter your license key. Trial keys work for 7 days on a single device. Lifetime keys bind to one device.</p>
+                <p style="margin:6px 0 14px;color:#bdbdbd;font-size:12px">Please enter the key.</p>
                 <input id="dp-key" placeholder="XXXX-XXXX-XXXX" spellcheck="false"
                        style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid #2b2b2b;background:#131318;color:#eaeaea;outline:none;font-size:13px">
                 <div style="display:flex;gap:10px;margin-top:12px">
@@ -221,7 +221,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         const GITHUB_RAW = 'https://raw.githubusercontent.com/Cyber05CC/darkpanel/main';
         const VERCEL_BASE = 'https://darkpanel-coral.vercel.app';
         const UPDATE_URL = VERCEL_BASE + '/update.json';
-        const BUNDLE_VERSION = '1.0';
+        const BUNDLE_VERSION = '1.1';
         const LS_INSTALLED = 'darkpanel_installed_version';
         const LS_LAST_APPLIED = 'darkpanel_last_applied_version';
         const SUPPORTED_TEXT_FILES = [
