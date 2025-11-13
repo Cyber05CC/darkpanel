@@ -1,10 +1,10 @@
 document.addEventListener('DOMContentLoaded', async function () {
-    ('use strict');
+    'use strict';
 
-    const API_BASE = 'https://darkpanel-backend-swart.vercel.app/api';
+    // -------------------- Helpers --------------------
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-    // -------------------- CEP GUARD --------------------
+    // CEP guard
     let csInterface = null;
     try {
         csInterface = new CSInterface();
@@ -12,7 +12,35 @@ document.addEventListener('DOMContentLoaded', async function () {
         console.warn('CSInterface not available. Running in browser preview mode.');
     }
 
-    // -------------------- DEVICE ID --------------------
+    // -------------------- Firebase Loader --------------------
+    async function loadScript(src) {
+        return new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = src;
+            s.onload = () => resolve(true);
+            s.onerror = () => reject(new Error('Failed to load ' + src));
+            document.head.appendChild(s);
+        });
+    }
+
+    async function ensureFirebaseLoaded() {
+        if (window.firebase?.apps?.length) return;
+        // Use Firebase v8 compat API (database())
+        await loadScript('https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js');
+        await loadScript('https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js');
+        const firebaseConfig = {
+            apiKey: 'AIzaSyC07km-qBiZkQnu-DtrpLIwVvbxjoMQzGg',
+            authDomain: 'darkpanelauth.firebaseapp.com',
+            databaseURL: 'https://darkpanelauth-default-rtdb.europe-west1.firebasedatabase.app',
+            projectId: 'darkpanelauth',
+            storageBucket: 'darkpanelauth.appspot.com',
+            messagingSenderId: '315614713241',
+            appId: '1:315614713241:web:78121bfb3ee9258f3d2f08',
+        };
+        window.firebase.initializeApp(firebaseConfig);
+    }
+
+    // -------------------- Device Fingerprint --------------------
     async function getDeviceId() {
         try {
             if (csInterface) {
@@ -24,141 +52,110 @@ document.addEventListener('DOMContentLoaded', async function () {
         const dims = (screen.width || 0) + 'x' + (screen.height || 0);
         return 'web_' + btoa(ua + '|' + dims);
     }
-    const deviceId = await getDeviceId();
 
-    // -------------------- API HELPERS --------------------
-    async function apiPost(path, body) {
-        try {
-            const res = await fetch(`${API_BASE}${path}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body || {}),
-                cache: 'no-store',
-            });
-            const data = await res.json().catch(() => ({}));
-            return { ok: res.ok, data };
-        } catch (err) {
-            console.error('API error:', err);
-            return { ok: false, data: { error: 'network_error' } };
-        }
-    }
-
-    // -------------------- LICENSE SYSTEM --------------------
+    // -------------------- License Layer --------------------
     const LOCAL_KEY = 'darkpanel_license_key';
-    const LICENSE_CACHE = 'darkpanel_license_cache';
+    const deviceId = await getDeviceId();
+    await ensureFirebaseLoaded();
+    const db = firebase.database();
 
-    async function checkKey(key) {
-        const { data } = await apiPost('/license/check', { key, deviceId });
-        // ✅ serverdan OK kelsa cache’ga yozib qo’yamiz
-        if (data?.valid || data?.ok) {
-            localStorage.setItem(
-                LICENSE_CACHE,
-                JSON.stringify({
-                    ts: Date.now(),
-                    type: data.type || (data.valid ? 'trial' : undefined),
-                    expiresAt: data.expiresAt || null,
-                })
-            );
-        }
-        return data;
-    }
-
-    async function activateKey(key) {
-        const { data } = await apiPost('/license/activate', { key, deviceId });
-        return data;
-    }
-
-    function readLicenseCache() {
+    async function readKey(key) {
         try {
-            return JSON.parse(localStorage.getItem(LICENSE_CACHE) || '{}');
-        } catch (_) {
-            return {};
+            const snap = await db.ref('keys/' + key).get();
+            if (!snap.exists()) return null;
+            return snap.val();
+        } catch (e) {
+            console.warn('Firebase read error:', e);
+            return null;
         }
     }
+
     async function validateStoredKey() {
         const key = localStorage.getItem(LOCAL_KEY);
         if (!key) return false;
-
-        if (!navigator.onLine) return true;
-
-        const data = await checkKey(key);
-        return !!(data && (data.ok === true || data.valid === true));
+        const data = await readKey(key);
+        if (!data) return false;
+        const now = Date.now();
+        if (data.deviceId && data.deviceId !== deviceId) return false;
+        if (data.type === 'trial') {
+            if (!data.expiresAt) return false;
+            if (Number(data.expiresAt) < now) return false;
+        }
+        return true;
     }
-
-    // -------------------- LICENSE STATUS DISPLAY --------------------
     await renderKeyStatus();
 
     async function renderKeyStatus() {
         const key = localStorage.getItem(LOCAL_KEY);
         if (!key) return;
-        const data = await checkKey(key);
+
+        const data = await readKey(key);
         if (!data) return;
 
         const el = document.createElement('div');
         el.id = 'key-status';
         el.style.cssText = `
-      position: fixed; bottom: 14px; left: 14px;
-      background: rgba(22,22,24,0.7); border: 1px solid #2a2a2a;
-      color: #ccc; font-family: Inter, system-ui, sans-serif;
-      font-size: 12px; padding: 6px 10px; border-radius: 8px;
-      backdrop-filter: blur(6px); z-index: 99999;
+        position: fixed;
+        bottom: 14px;
+        left: 14px;
+        background: rgba(22,22,24,0.7);
+        border: 1px solid #2a2a2a;
+        color: #ccc;
+        font-family: Inter, system-ui, sans-serif;
+        font-size: 12px;
+        padding: 6px 10px;
+        border-radius: 8px;
+        backdrop-filter: blur(6px);
+        z-index: 99999;
+        transition: opacity 0.3s ease;
     `;
 
-        if (data.ok && data.type === 'lifetime') {
-            el.textContent = '💎 Lifetime license active';
-            el.style.color = '#6df76d';
-        } else if (data.ok && data.type === 'trial') {
-            const days = Number(data.remainingDays ?? 0);
-            if (days <= 0) {
-                el.textContent = '❌ Trial expired';
+        const now = Date.now();
+
+        if (data.type === 'trial') {
+            const expiresAt = Number(data.expiresAt || 0);
+            if (!expiresAt) return;
+            const diff = expiresAt - now;
+            const days = Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+
+            if (diff <= 0) {
+                el.innerHTML = '❌ Trial expired';
                 el.style.color = '#ff5e5e';
             } else {
-                el.textContent = `⏳ Trial: ${days} day${days > 1 ? 's' : ''} left`;
-                if (days <= 2) el.style.color = '#f5b400';
+                el.innerHTML = `⏳ Trial: ${days} day${days > 1 ? 's' : ''} left`;
+                if (days <= 2) el.style.color = '#f5b400'; // ogohlantiruvchi sariq
             }
-        } else {
-            el.textContent = '⚠️ Activation required';
-            el.style.color = '#ffb400';
+        } else if (data.type === 'lifetime') {
+            el.innerHTML = '💎 Lifetime license active';
+            el.style.color = '#6df76d';
         }
+
         document.body.appendChild(el);
     }
 
-    // -------------------- ACTIVATION UI --------------------
     function renderActivationUI() {
-        if (!navigator.onLine) {
-            showOfflineNeedsNetOverlay();
-            return;
-        }
         const overlay = document.createElement('div');
         overlay.id = 'dp-activation';
         overlay.style.cssText = `
-      position:fixed;inset:0;background:#0f0f10;display:flex;
-      align-items:center;justify-content:center;z-index:999999;color:#fff;
-      font-family:Inter,system-ui,Arial,sans-serif;
-    `;
+            position:fixed;inset:0;background:#0f0f10;display:flex;align-items:center;justify-content:center;
+            z-index:999999;color:#fff;font-family:Inter,system-ui,Arial,sans-serif;
+        `;
         overlay.innerHTML = `
-      <div style="width:min(420px,90vw);padding:22px 20px;border:1px solid #2a2a2a;
-      border-radius:14px;background:linear-gradient(180deg,#141416,#0f0f10)">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-              <div style="width:32px;height:32px;border-radius:8px;background:#3537ff;
-              display:flex;align-items:center;justify-content:center;">🔐</div>
-              <h2 style="margin:0;font-size:18px;font-weight:700">darkPanel Activation</h2>
-          </div>
-          <p style="margin:6px 0 14px;color:#bdbdbd;font-size:12px">Please enter your key.</p>
-          <input id="dp-key" placeholder="XXXX-XXXX-XXXX" spellcheck="false"
-                 style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid #2b2b2b;
-                 background:#131318;color:#eaeaea;outline:none;font-size:13px">
-          <div style="display:flex;gap:10px;margin-top:12px">
-              <button id="dp-activate" style="flex:1;padding:10px 12px;border:0;
-              border-radius:10px;background:#4a6cff;color:#fff;font-weight:600;cursor:pointer">
-                  Activate
-              </button>
-              <button id="dp-exit" style="padding:10px 12px;border:1px solid #2b2b2b;
-              border-radius:10px;background:#16161a;color:#ddd;cursor:pointer">Close</button>
-          </div>
-          <div id="dp-msg" style="margin-top:10px;color:#9ca3af;font-size:12px;min-height:16px"></div>
-      </div>
-    `;
+            <div style="width:min(420px,90vw);padding:22px 20px;border:1px solid #2a2a2a;border-radius:14px;background:linear-gradient(180deg,#141416,#0f0f10)">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                    <div style="width:32px;height:32px;border-radius:8px;background:#3537ff;display:flex;align-items:center;justify-content:center;">🔐</div>
+                    <h2 style="margin:0;font-size:18px;font-weight:700">dark panel Activation</h2>
+                </div>
+                <p style="margin:6px 0 14px;color:#bdbdbd;font-size:12px">Please enter the key.</p>
+                <input id="dp-key" placeholder="XXXX-XXXX-XXXX" spellcheck="false"
+                       style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid #2b2b2b;background:#131318;color:#eaeaea;outline:none;font-size:13px">
+                <div style="display:flex;gap:10px;margin-top:12px">
+                    <button id="dp-activate" style="flex:1;padding:10px 12px;border:0;border-radius:10px;background:#4a6cff;color:#fff;font-weight:600;cursor:pointer">Activate</button>
+                    <button id="dp-exit" style="padding:10px 12px;border:1px solid #2b2b2b;border-radius:10px;background:#16161a;color:#ddd;cursor:pointer">Close</button>
+                </div>
+                <div id="dp-msg" style="margin-top:10px;color:#9ca3af;font-size:12px;min-height:16px"></div>
+            </div>
+        `;
         document.body.appendChild(overlay);
 
         document.getElementById('dp-exit').onclick = () => {
@@ -168,115 +165,60 @@ document.addEventListener('DOMContentLoaded', async function () {
         document.getElementById('dp-activate').onclick = async () => {
             const el = document.getElementById('dp-key');
             const msg = document.getElementById('dp-msg');
-            const key = (el.value || '').trim().toUpperCase();
+            const key = (el.value || '').trim();
             if (!key) return (msg.textContent = 'Please paste your key.');
 
-            msg.textContent = '🔄 Checking key…';
-
-            const result = await activateKey(key);
-            console.log('Activation result:', result);
-
-            if (!result) {
-                msg.textContent = '❌ No response from server.';
+            msg.textContent = 'Checking key…';
+            const data = await readKey(key);
+            if (!data) {
+                msg.textContent = '❌ Invalid key.';
                 return;
             }
-
-            if (!result.ok) {
-                const reason = result.error || 'Invalid key.';
-                if (reason === 'bound_to_other_device')
-                    msg.textContent = '⚠️ Key already used on another device.';
-                else if (reason === 'trial_expired') msg.textContent = '⏰ Trial expired.';
-                else if (reason === 'not_found') msg.textContent = '❌ Key not found.';
-                else msg.textContent = '❌ ' + reason;
+            const now = Date.now();
+            if (data.deviceId && data.deviceId !== deviceId) {
+                msg.textContent = '⚠️ This key is already used on another device.';
                 return;
+            }
+            if (data.type === 'trial') {
+                let expiresAt = Number(data.expiresAt || 0);
+                if (!expiresAt) {
+                    expiresAt = now + 7 * 24 * 60 * 60 * 1000;
+                    await db.ref('keys/' + key).update({ deviceId, createdAt: now, expiresAt });
+                } else if (expiresAt < now) {
+                    msg.textContent = '⏰ Trial expired.';
+                    return;
+                } else {
+                    if (!data.deviceId) await db.ref('keys/' + key).update({ deviceId });
+                }
+            }
+            if (data.type === 'lifetime') {
+                if (!data.deviceId) await db.ref('keys/' + key).update({ deviceId });
             }
 
             localStorage.setItem(LOCAL_KEY, key);
-            msg.textContent = '✅ Activated successfully!';
-            await sleep(700);
+            msg.textContent = '✅ Activated! Loading…';
+            await sleep(500);
             overlay.remove();
             startApp();
         };
     }
 
-    // -------------------- VALIDATION --------------------
-    const hasKey = !!localStorage.getItem(LOCAL_KEY);
-
-    if (!navigator.onLine) {
-        if (hasKey) {
-            // ✅ Offline + key bor → to‘g‘ridan to‘g‘ri UI
-            showOfflineRibbon(); // kichik banner
-            startApp();
-        } else {
-            // ❌ Offline + key yo‘q → aktivatsiya qilish uchun internet kerak
-            showOfflineNeedsNetOverlay();
-        }
-        return; // bu holatlarda serverga so‘rov yo‘q
-    }
-
-    const valid = await validateStoredKey();
-    if (!valid) {
-        renderActivationUI(); // faqat online va key noto‘g‘ri bo‘lsa ochiladi
+    if (!(await validateStoredKey())) {
+        renderActivationUI();
         return;
     }
 
-    function showOfflineRibbon() {
-        if (document.getElementById('offline-ribbon')) return;
-        const bar = document.createElement('div');
-        bar.id = 'offline-ribbon';
-        bar.style.cssText = `
-    position:fixed;left:12px;right:12px;bottom:10rem;z-index:99999;
-    background:#191a1f;border:1px solid #2b2b2b;color:#bbb;
-    padding:6px 10px;border-radius:8px;font:12px/1.2 Inter,system-ui;text-align:center;
-  `;
-        bar.textContent = '📡 Offline mode — some features need internet';
-        document.body.appendChild(bar);
-        window.addEventListener(
-            'online',
-            () => {
-                bar.remove();
-                location.reload();
-            },
-            { once: true }
-        );
-    }
-
-    function showOfflineNeedsNetOverlay() {
-        const el = document.createElement('div');
-        el.style.cssText = `
-    position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
-    background:#0f0f10;color:#fff;z-index:999999;font-family:Inter,system-ui;flex-direction:column;gap:8px;
-  `;
-        el.innerHTML = `
-    <div style="font-size:40px">📡</div>
-    <div style="font-size:16px;font-weight:700">No internet</div>
-    <div style="font-size:13px;color:#bdbdbd">Activation requires internet connection</div>
-    <button id="retryNet" style="margin-top:10px;padding:8px 14px;border-radius:10px;border:0;background:#4a6cff;color:#fff;font-weight:600">Try again</button>
-  `;
-        document.body.appendChild(el);
-        const go = () => {
-            el.remove();
-            location.reload();
-        };
-        document.getElementById('retryNet').onclick = go;
-        window.addEventListener('online', go, { once: true });
-    }
-
-    // -------------------- APP CORE --------------------
     startApp();
 
-    async function startApp() {
+    // =================== APP CORE ===================
+    function startApp() {
+        // ----------------------- CONFIG -----------------------
         const GITHUB_RAW = 'https://raw.githubusercontent.com/Cyber05CC/darkpanel/main';
-        const UPDATE_URL = API_BASE.replace('/api', '') + '/data/update.json';
-
+        const VERCEL_BASE = 'https://darkpanel-coral.vercel.app';
+        const UPDATE_URL = VERCEL_BASE + '/update.json';
+        const BUNDLE_VERSION = '1.1';
         const LS_INSTALLED = 'darkpanel_installed_version';
         const LS_LAST_APPLIED = 'darkpanel_last_applied_version';
-
-        const storedVersion =
-            localStorage.getItem(LS_LAST_APPLIED) || localStorage.getItem(LS_INSTALLED);
-        const BUNDLE_VERSION = storedVersion || '1.0';
-        let currentVersion = BUNDLE_VERSION;
-
         const SUPPORTED_TEXT_FILES = [
             'index.html',
             'css/style.css',
@@ -307,6 +249,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         let currentPack = localStorage.getItem('currentPack') || 'text';
         let favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
         let presets = [];
+        let currentVersion = localStorage.getItem(LS_INSTALLED) || BUNDLE_VERSION;
 
         // -------------------- STARTUP --------------------
         setupConnectionWatcher();
@@ -351,11 +294,8 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         // ===================== UPDATE SYSTEM =====================
         async function safeCheckForUpdates() {
-            if (!navigator.onLine) return;
             try {
-                const res = await fetch(UPDATE_URL + '?v=' + Date.now(), {
-                    cache: 'no-store',
-                });
+                const res = await fetch(UPDATE_URL + '?t=' + Date.now(), { cache: 'no-store' });
                 if (!res.ok) throw new Error('update.json not found');
                 const remote = await res.json();
 
@@ -364,20 +304,19 @@ document.addEventListener('DOMContentLoaded', async function () {
                     localStorage.getItem(LS_INSTALLED) ||
                     BUNDLE_VERSION;
 
-                // agar o'rnatilgan versiya va update.json bir xil bo'lsa → qayt
-                if (remote?.version === installed) {
-                    console.log('✅ Already on latest version:', remote.version);
-                    return;
-                }
-
-                // faqat yangi bo'lsa popup chiqsin
-                const lastShown = localStorage.getItem('darkpanel_last_checked_version');
-                if (remote?.version && remote.version !== lastShown) {
+                if (remote?.version && remote.version !== installed) {
                     showUpdatePopup(remote.version, remote.files || {});
-                    // eslab qolamiz, lekin update bo‘lgandan keyin bu kalitni o‘chir
-                    localStorage.setItem('darkpanel_last_checked_version', remote.version);
                 } else {
-                    console.log('✅ Version up to date:', remote.version);
+                    console.log('✅ Version is up to date:', installed);
+                    currentVersion = installed;
+                    updateVersionDisplay();
+                    if (
+                        remote?.version &&
+                        remote.version !== localStorage.getItem(LS_LAST_APPLIED)
+                    ) {
+                        localStorage.removeItem('darkpanel_cache_bust');
+                        localStorage.setItem('darkpanel_cache_bust', Date.now());
+                    }
                 }
             } catch (e) {
                 console.warn('❌ Update check error:', e);
@@ -410,7 +349,6 @@ document.addEventListener('DOMContentLoaded', async function () {
                     const ok = await tryWriteToExtension(files);
                     localStorage.setItem(LS_INSTALLED, version);
                     localStorage.setItem(LS_LAST_APPLIED, version);
-                    localStorage.removeItem('darkpanel_last_checked_version');
                     currentVersion = version;
                     updateVersionDisplay();
 
@@ -667,7 +605,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         }
 
         function updatePackUI() {
-            const packBtn = document.querySelectorAll('.pack-btn');
+            const packBtn = document.querySelector('.pack-btn');
             if (!packBtn) return;
             if (currentPack === 'text') {
                 packBtn.textContent = 'Text Pack ▼';
@@ -680,40 +618,29 @@ document.addEventListener('DOMContentLoaded', async function () {
             }
         }
 
-        async function createPresets() {
+        function createPresets() {
             if (!presetList) return;
             presetList.innerHTML = '';
-
-            // 🔥 Avtomatik sonni aniqlash
-            let presetCount = 0;
-            try {
-                const res = await fetch(`${GITHUB_RAW}/assets/videos/list.json?v=${Date.now()}`);
-                if (res.ok) {
-                    const data = await res.json();
-                    presetCount = data[currentPack] || 0;
-                } else {
-                    presetCount = currentPack === 'text' ? 30 : 15; // fallback
-                }
-            } catch {
-                presetCount = currentPack === 'text' ? 30 : 15;
-            }
-
+            const presetCount = currentPack === 'text' ? 30 : 15;
             const packType = currentPack === 'text' ? 'Text' : 'Effect';
+
             for (let i = 1; i <= presetCount; i++) {
                 const preset = document.createElement('div');
                 preset.className = 'preset';
                 preset.dataset.file = `${currentPack}_${i}.ffx`;
 
-                const videoSrc = `${GITHUB_RAW}/assets/videos/${currentPack}_${i}.mp4?v=${Date.now()}`;
+                const videoSrc = `${GITHUB_RAW}/assets/videos/${currentPack}_${i}.mp4?v=${encodeURIComponent(
+                    localStorage.getItem(LS_LAST_APPLIED) || currentVersion
+                )}&t=${Date.now()}`;
                 preset.innerHTML = `
-      <div class="preset-thumb">
-        <video muted loop playsinline preload="metadata">
-          <source src="${videoSrc}" type="video/mp4" />
-        </video>
-        <input type="checkbox" class="favorite-check" data-file="${currentPack}_${i}.ffx">
-      </div>
-      <div class="preset-name">${packType} ${i}</div>
-    `;
+                    <div class="preset-thumb">
+                        <video muted loop playsinline preload="metadata">
+                            <source src="${videoSrc}" type="video/mp4" />
+                        </video>
+                        <input type="checkbox" class="favorite-check" data-file="${currentPack}_${i}.ffx">
+                    </div>
+                    <div class="preset-name">${packType} ${i}</div>
+                `;
                 presetList.appendChild(preset);
             }
 
