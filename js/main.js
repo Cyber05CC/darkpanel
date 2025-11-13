@@ -667,7 +667,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         }
 
         function updatePackUI() {
-            const packBtn = document.querySelector('.pack-btn');
+            const packBtn = document.querySelectorAll('.pack-btn');
             if (!packBtn) return;
             if (currentPack === 'text') {
                 packBtn.textContent = 'Text Pack ▼';
