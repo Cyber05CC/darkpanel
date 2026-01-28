@@ -1,0 +1,404 @@
+<!doctype html>
+<html>
+    <head>
+        <meta charset="UTF-8" />
+        <title>darkPanel</title>
+        <link rel="stylesheet" href="./css/style.css" />
+        <script>
+            document.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                return false;
+            });
+
+            document.addEventListener('selectstart', (e) => {
+                e.preventDefault();
+                return false;
+            });
+
+            document.addEventListener('dragstart', (e) => {
+                e.preventDefault();
+                return false;
+            });
+
+            document.addEventListener('keydown', function (e) {
+                if (
+                    e.key === 'F12' ||
+                    (e.ctrlKey && e.shiftKey && e.key === 'I') ||
+                    (e.ctrlKey && e.key === 'U')
+                ) {
+                    e.preventDefault();
+                    return false;
+                }
+            });
+        </script>
+
+        <script src="./js/CSInterface.js"></script>
+        <script src="./js/main.js"></script>
+        <script src="https://cdn.lordicon.com/lordicon.js"></script>
+    </head>
+    <body>
+        <div id="dp-info-modal" class="info-modal">
+            <div class="info-panel">
+                <div class="info-header">
+                    <h1>Info</h1>
+                    <button class="close-info">×</button>
+                </div>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <div class="item-left">
+                            <lord-icon
+                                src="https://cdn.lordicon.com/jezazvlx.json"
+                                trigger="loop"
+                                state="loop-wave"
+                                colors="primary:#f7f7f7,secondary:#788bf1"
+                                class="dp-icon"
+                            ></lord-icon>
+                            <span>Status:</span>
+                        </div>
+                        <span id="modal-status" class="value-badge online">Online</span>
+                    </div>
+                    <div class="info-item">
+                        <div class="item-left">
+                            <lord-icon
+                                src="https://cdn.lordicon.com/rqqkvjqf.json"
+                                trigger="loop"
+                                colors="primary:#f7f7f7,secondary:#788bf1"
+                                class="dp-icon"
+                            ></lord-icon>
+                            <span>Type:</span>
+                        </div>
+                        <span id="modal-license-status" class="value-badge">Trial</span>
+                    </div>
+                    <div class="info-item">
+                        <div class="item-left">
+                            <lord-icon
+                                src="https://cdn.lordicon.com/warimioc.json"
+                                trigger="loop"
+                                state="loop-oscillate"
+                                colors="primary:#f7f7f7,secondary:#788bf1"
+                                class="dp-icon"
+                            ></lord-icon>
+                            <span>Trial:</span>
+                        </div>
+                        <span id="modal-trial-days" class="value-badge">4</span>
+                    </div>
+                    <div class="info-item">
+                        <div class="item-left">
+                            <lord-icon
+                                src="https://cdn.lordicon.com/nfuackpv.json"
+                                trigger="loop"
+                                state="loop-spin"
+                                colors="primary:#f7f7f7,secondary:#788bf1"
+                                class="dp-icon"
+                            ></lord-icon>
+                            <span>Current:</span>
+                        </div>
+                        <span id="modal-version" class="value-badge">v1.0</span>
+                    </div>
+                    <div class="info-section">
+                        <h3>System</h3>
+
+                        <div class="info-row">
+                            <span>Environment</span>
+                            <b id="modal-env">CEP</b>
+                        </div>
+
+                        <div class="info-row">
+                            <span>Device ID</span>
+                            <b id="modal-device">••••••</b>
+                        </div>
+
+                        <div class="info-row">
+                            <span>Network</span>
+                            <b id="modal-net">Stable</b>
+                        </div>
+                        <div class="info-section">
+                            <h3>Runtime</h3>
+
+                            <div class="info-row">
+                                <span>Platform</span>
+                                <b id="dp-platform">—</b>
+                            </div>
+
+                            <div class="info-row">
+                                <span>UI Mode</span>
+                                <b>Panel</b>
+                            </div>
+
+                            <div class="info-row">
+                                <span>Renderer</span>
+                                <b>CEP</b>
+                            </div>
+
+                            <div class="info-row">
+                                <span>Panel state</span>
+                                <b id="dp-panel-state">Active</b>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="info-item info-activity">
+                        <div class="activity-block">
+                            <h4>Session</h4>
+                            <div class="activity-row">
+                                <span>Uptime</span>
+                                <b id="dp-uptime">00:00:00</b>
+                            </div>
+                            <div class="activity-row">
+                                <span>Mode</span>
+                                <b id="dp-mode">Production</b>
+                            </div>
+                        </div>
+
+                        <div class="activity-block">
+                            <h4>Performance</h4>
+                            <div class="activity-row">
+                                <span>UI FPS</span>
+                                <b id="dp-fps">60</b>
+                            </div>
+                            <div class="activity-row">
+                                <span>Memory</span>
+                                <b id="dp-mem">Low / OK</b>
+                            </div>
+                        </div>
+
+                        <div class="activity-block">
+                            <h4>Last action</h4>
+                            <div class="activity-row">
+                                <span>Preset</span>
+                                <b id="dp-last-action">—</b>
+                            </div>
+                            <div class="activity-row">
+                                <span>Time</span>
+                                <b id="dp-last-time">—</b>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="info-actions">
+                    <button id="checkUpdateBtn">Check update</button>
+                    <button id="copyDeviceBtn">Copy device ID</button>
+                </div>
+            </div>
+        </div>
+
+        <main>
+            <div class="container">
+                <header>
+                    <div class="header_logo">
+                        <div class="btn-wrapper">
+                            <button class="btn video-btn">
+                                <video
+                                    class="btn-video"
+                                    src="./assets/icon/darkenKachok.mp4"
+                                    autoplay
+                                    muted
+                                    playsinline
+                                    preload="auto"
+                                ></video>
+                                <!-- <img
+                                    class="btn-video"
+                                    src="./assets/icon/output.webp"
+                                    alt="darkenBEK"
+                                /> -->
+                            </button>
+                        </div>
+                        <div class="controls">
+                            <div class="buttons">
+                                <button id="curve-btn" class="curve_btn apply_btn">Curve</button>
+                                <button id="apply" class="apply_btn">Add</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tabs">
+                        <div class="pack-dropdown">
+                            <button class="pack-btn">
+                                <span class="pack-label">Pack</span>
+                                <span class="pack-arrow">▼</span>
+                            </button>
+                            <div class="pack-dropdown-content">
+                                <a href="#" id="textPackBtn">Text</a>
+                                <a href="#" id="effectPackBtn">Effect</a>
+                            </div>
+                        </div>
+                        <button id="allTab" class="tab active">All</button>
+                        <button id="favoritesTab" class="tab">Pin</button>
+                        <div class="underline"></div>
+                        <div class="grid-control">
+                            <button class="grid-btn" data-cols="1">1x</button>
+                            <button class="grid-btn active" data-cols="2">2x</button>
+                            <button class="grid-btn" data-cols="3">3x</button>
+                        </div>
+                    </div>
+                </header>
+
+                <div id="graph-view">
+                    <iframe id="graph-iframe" src="./test/index.html"></iframe>
+                </div>
+
+                <div id="presets-container">
+                    <div class="presets" id="presetList"></div>
+                    <!-- <div class="pagination">
+                        <button id="prevPage" disabled><span>❮</span></button>
+                        <span id="pageInfo">Page : </span>
+                        <button id="nextPage"><span>❯</span></button>
+                    </div> -->
+                </div>
+            </div>
+        </main>
+
+        <script>
+            // DOM yuklanganda
+            document.addEventListener('DOMContentLoaded', function () {
+                // Elementlarni tanlash
+                const curveBtn = document.getElementById('curve-btn');
+                const graphView = document.getElementById('graph-view');
+                const presetsContainer = document.getElementById('presets-container');
+                const tabs = document.querySelector('.tabs');
+                const packDropdown = document.querySelector('.pack-dropdown');
+                const graphIframe = document.getElementById('graph-iframe');
+                const addButton = document.getElementById('apply');
+
+                let isGraphView = false;
+
+                // Curve/Pack tugmasi bosilganda
+                if (curveBtn) {
+                    curveBtn.addEventListener('click', function () {
+                        if (!isGraphView) {
+                            // Graph viewga o'tish
+                            isGraphView = true;
+
+                            // Presets container va tabs ni yashirish
+                            presetsContainer.classList.add('hidden');
+                            tabs.classList.add('hidden');
+                            packDropdown.classList.add('hidden');
+
+                            // Add tugmasini yashirish
+                            addButton.classList.add('add-hidden');
+
+                            // Curve tugmasini kengaytirish va Pack ga o'zgartirish
+                            curveBtn.textContent = 'Pack';
+                            curveBtn.classList.remove('curve-contracted');
+                            curveBtn.classList.add('curve-expanded');
+
+                            // Graph viewni ko'rsatish
+                            setTimeout(() => {
+                                graphView.classList.add('active');
+                            }, 10);
+
+                            // Graph iframe yuklanganda back buttonni yashirish
+                            if (graphIframe) {
+                                graphIframe.addEventListener('load', function () {
+                                    try {
+                                        const iframeWindow = graphIframe.contentWindow;
+                                        const iframeDocument = iframeWindow.document;
+
+                                        // Back buttonni yashirish
+                                        const backButton =
+                                            iframeDocument.getElementById('back-button');
+                                        if (backButton) {
+                                            backButton.style.display = 'none';
+                                        }
+                                    } catch (e) {
+                                        console.log('Iframe access:', e);
+                                    }
+                                });
+                            }
+                        } else {
+                            // Presets viewga qaytish
+                            isGraphView = false;
+
+                            // Graph viewni yashirish
+                            graphView.classList.remove('active');
+
+                            // Presets container va tabs ni ko'rsatish
+                            setTimeout(() => {
+                                presetsContainer.classList.remove('hidden');
+                                tabs.classList.remove('hidden');
+                                packDropdown.classList.remove('hidden');
+                            }, 150);
+
+                            // Add tugmasini ko'rsatish
+                            setTimeout(() => {
+                                addButton.classList.remove('add-hidden');
+                            }, 150);
+
+                            // Pack tugmasini kichraytirish va Curve ga qaytarish
+                            curveBtn.textContent = 'Curve';
+                            curveBtn.classList.remove('curve-expanded');
+                            curveBtn.classList.add('curve-contracted');
+                        }
+                    });
+                }
+
+                // Add tugmasi bosilganda
+                if (addButton) {
+                    addButton.addEventListener('click', function () {
+                        if (isGraphView) {
+                            // Graph oynasida - graph.html dagi Apply funksiyasini chaqirish
+                            try {
+                                const iframeWindow = graphIframe.contentWindow;
+                                const applyBtn = iframeWindow.document.getElementById('applyBtn');
+
+                                if (applyBtn) {
+                                    applyBtn.click();
+                                }
+                            } catch (e) {
+                                console.log('Graph apply error:', e);
+                            }
+                        } else {
+                            // Preset oynasida - asl Add funksiyasini ishga tushirish
+                            console.log('Add preset clicked');
+                        }
+                    });
+                }
+
+                // Graph iframe ichidagi back message
+                window.addEventListener('message', function (event) {
+                    if (event.data === 'back-to-presets') {
+                        // Presets viewga qaytish
+                        isGraphView = false;
+                        graphView.classList.remove('active');
+
+                        setTimeout(() => {
+                            presetsContainer.classList.remove('hidden');
+                            tabs.classList.remove('hidden');
+                            packDropdown.classList.remove('hidden');
+                            addButton.classList.remove('add-hidden');
+
+                            // Pack tugmasini kichraytirish va Curve ga qaytarish
+                            curveBtn.textContent = 'Curve';
+                            curveBtn.classList.remove('curve-expanded');
+                            curveBtn.classList.add('curve-contracted');
+                        }, 150);
+                    }
+                });
+
+                // Agar main.js da grid funksiyasi bo'lmasa, grid control qo'shamiz
+                const gridButtons = document.querySelectorAll('.grid-btn');
+                gridButtons.forEach((button) => {
+                    button.addEventListener('click', function () {
+                        gridButtons.forEach((btn) => btn.classList.remove('active'));
+                        this.classList.add('active');
+
+                        const cols = this.dataset.cols;
+                        const presetList = document.getElementById('presetList');
+                        if (presetList) {
+                            presetList.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+                        }
+                    });
+                });
+            });
+            document.querySelectorAll('.btn-video').forEach((video) => {
+                video.addEventListener('ended', () => {
+                    video.currentTime = 0;
+                    video.play();
+                });
+
+                // autoplay bloklangan bo‘lsa, interaction’da start bo‘lsin
+                video.addEventListener('canplay', () => {
+                    video.play().catch(() => {});
+                });
+            });
+        </script>
+    </body>
+</html>

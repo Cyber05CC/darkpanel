@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Speed Graph Pro</title>
+        <script src="./CSInterface.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+        <script src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap');
+            @import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&family=Orbitron:wght@400..900&family=Roboto:ital,wght@0,100..900;1,100..900&family=Secular+One&display=swap');
+            @font-face {
+                font-family: 'AKIRA';
+                src: url('../css/Fonts/Akira\ Expanded\ Demo.woff2') format('woff2');
+                font-weight: 400;
+                font-style: normal;
+                font-display: swap;
+            }
+            body,
+            html {
+                margin: 0;
+                padding: 0;
+                background: #08080800;
+                color: white;
+                font-family: 'AKIRA';
+                overflow: hidden;
+                height: 100%;
+                width: 100%;
+            }
+            #root {
+                /* height: 100%; */
+                width: 100%;
+                display: flex;
+                flex-direction: column;
+            }
+
+            .grid-container {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                flex: 1;
+                /* padding: 5vmin; */
+                overflow: hidden;
+                width: 100%;
+                /* height: 100%; */
+            }
+
+            .pro-grid {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 2vmin;
+                /* Fluid width based on both height and width to maintain visibility */
+                width: min(100vw, 72vh);
+                margin: auto;
+            }
+
+            .custom-btn {
+                font-family: 'AKIRA';
+            }
+
+            .animate-modal {
+                animation: modalIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            }
+            @keyframes modalIn {
+                from {
+                    opacity: 0;
+                    transform: scale(0.9) translateY(10px);
+                }
+                to {
+                    opacity: 1;
+                    transform: scale(1) translateY(0);
+                }
+            }
+
+            .click-pop {
+                animation: clickPop 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+            }
+            @keyframes clickPop {
+                0% {
+                    transform: scale(1);
+                }
+                40% {
+                    transform: scale(0.92);
+                }
+                100% {
+                    transform: scale(1);
+                }
+            }
+
+            .preset-label {
+                font-size: clamp(10px, 1.5vmin, 14px);
+                line-height: 1.2;
+                transition: color 0.2s ease;
+            }
+            .cursor-ew-resize {
+                cursor: ew-resize;
+            }
+
+            .diamond-fix {
+                transform-box: fill-box;
+                transform-origin: center;
+                transform: rotate(45deg);
+            }
+
+            .mono-val {
+                font-family: 'AKIRA';
+            }
+
+            .scrollbar-hide::-webkit-scrollbar {
+                display: none;
+            }
+            .scrollbar-hide {
+                -ms-overflow-style: none;
+                scrollbar-width: none;
+            }
+        </style>
+        <script type="importmap">
+            {
+                "imports": {
+                    "react": "https://esm.sh/react@^19.2.3",
+                    "react/": "https://esm.sh/react@^19.2.3/"
+                }
+            }
+        </script>
+    </head>
+    <body>
+        <div id="root"></div>
+        <script type="text/babel">
+            const { useState, useMemo, useCallback, useRef, useEffect } = React;
+
+            const STORAGE_KEY = 'SPEED_GRAPH_PRO_V12_FINAL';
+
+            const INITIAL_PRESETS = [
+                { id: 1, name: 'Linear', outInfluence: 0.1, inInfluence: 0.1, isEmpty: false },
+                { id: 2, name: 'Easy Ease', outInfluence: 33.3, inInfluence: 33.3, isEmpty: false },
+                { id: 3, name: 'Out 75', outInfluence: 75, inInfluence: 10, isEmpty: false },
+                { id: 4, name: 'In 75', outInfluence: 10, inInfluence: 75, isEmpty: false },
+                { id: 5, name: 'Strong', outInfluence: 90, inInfluence: 90, isEmpty: false },
+                { id: 6, name: 'Extreme', outInfluence: 100, inInfluence: 100, isEmpty: false },
+                ...Array(6)
+                    .fill(null)
+                    .map((_, i) => ({
+                        id: i + 7,
+                        name: '',
+                        outInfluence: 33.3,
+                        inInfluence: 33.3,
+                        isEmpty: true,
+                    })),
+            ];
+
+            const getSpeedAtT = (t, ho, hi) => {
+                const mt = 1 - t;
+                const dxdt = 3 * mt * mt * ho + 6 * mt * t * (1 - hi - ho) + 3 * t * t * hi;
+                const dydt = 6 * mt * t;
+                return dxdt < 0.0001 ? 100 : dydt / dxdt;
+            };
+
+            const GraphEditor = ({ outInfluence, inInfluence, onUpdate }) => {
+                const containerRef = useRef(null);
+                const [activeHandle, setActiveHandle] = useState(null);
+
+                const WIDTH = 240;
+                const HEIGHT = 100;
+                const PX = 40;
+                const PY = 40;
+                const TOTAL_W = WIDTH + PX * 2;
+                const TOTAL_H = HEIGHT + PY * 2;
+                const BASE_Y = HEIGHT + PY;
+                const HALF_W = WIDTH / 2;
+
+                const handleMove = useCallback(
+                    (e) => {
+                        if (!activeHandle || !containerRef.current) return;
+                        const rect = containerRef.current.getBoundingClientRect();
+                        const scaleX = TOTAL_W / rect.width;
+                        const xPos = (e.clientX - rect.left) * scaleX - PX;
+
+                        if (activeHandle === 'out') {
+                            const val = Math.max(0.1, Math.min(100, (xPos / HALF_W) * 100));
+                            onUpdate(val, inInfluence);
+                        } else {
+                            const val = Math.max(
+                                0.1,
+                                Math.min(100, ((WIDTH - xPos) / HALF_W) * 100)
+                            );
+                            onUpdate(outInfluence, val);
+                        }
+                    },
+                    [activeHandle, outInfluence, inInfluence, onUpdate, TOTAL_W, WIDTH, HALF_W]
+                );
+
+                useEffect(() => {
+                    if (activeHandle) {
+                        const stop = () => setActiveHandle(null);
+                        window.addEventListener('mousemove', handleMove);
+                        window.addEventListener('mouseup', stop);
+                        return () => {
+                            window.removeEventListener('mousemove', handleMove);
+                            window.removeEventListener('mouseup', stop);
+                        };
+                    }
+                }, [activeHandle, handleMove]);
+
+                const path = useMemo(() => {
+                    const ho = outInfluence / 100,
+                        hi = inInfluence / 100;
+                    const steps = 60;
+                    let pts = [],
+                        maxV = 0;
+                    for (let i = 0; i <= steps; i++) {
+                        const t = i / steps;
+                        const v = getSpeedAtT(t, ho, hi);
+                        if (v > maxV) maxV = v;
+                        pts.push({ t, v });
+                    }
+                    const visualScale = (HEIGHT * 0.7) / 1.5;
+                    const scale = Math.min(visualScale, HEIGHT / Math.max(0.1, maxV));
+                    let d = '';
+                    for (let i = 0; i <= steps; i++) {
+                        const t = i / steps,
+                            mt = 1 - t;
+                        const x =
+                            (3 * mt * mt * t * ho + 3 * mt * t * t * (1 - hi) + t * t * t) * WIDTH;
+                        const y = HEIGHT - pts[i].v * scale;
+                        d +=
+                            (i === 0 ? 'M ' : ' L ') +
+                            (x + PX).toFixed(2) +
+                            ',' +
+                            (y + PY).toFixed(2);
+                    }
+                    return d;
+                }, [outInfluence, inInfluence, WIDTH, HEIGHT, PX, PY]);
+
+                const hXOut = PX + HALF_W * (outInfluence / 100);
+                const hXIn = PX + WIDTH - HALF_W * (inInfluence / 100);
+
+                return (
+                    <div className="w-full flex flex-col items-center bg-black/40 rounded-3xl p-4 border border-white/5">
+                        <svg
+                            ref={containerRef}
+                            viewBox={`0 0 ${TOTAL_W} ${TOTAL_H}`}
+                            className="w-full h-auto overflow-visible touch-none"
+                        >
+                            <line
+                                x1={PX}
+                                y1={BASE_Y}
+                                x2={hXOut}
+                                y2={BASE_Y}
+                                stroke="#e2e2ff"
+                                strokeWidth="1"
+                                strokeDasharray="3,2"
+                                opacity="0.3"
+                            />
+                            <line
+                                x1={PX + WIDTH}
+                                y1={BASE_Y}
+                                x2={hXIn}
+                                y2={BASE_Y}
+                                stroke="#e2e2ff"
+                                strokeWidth="1"
+                                strokeDasharray="3,2"
+                                opacity="0.3"
+                            />
+                            <path
+                                d={path}
+                                fill="none"
+                                stroke="#788bf1"
+                                strokeWidth="3"
+                                strokeLinecap="round"
+                            />
+                            <rect
+                                x={PX - 3}
+                                y={BASE_Y - 3}
+                                width="6"
+                                height="6"
+                                fill="#141414"
+                                stroke="white"
+                                strokeWidth="1.5"
+                            />
+                            <rect
+                                x={PX + WIDTH - 3}
+                                y={BASE_Y - 3}
+                                width="6"
+                                height="6"
+                                fill="#141414"
+                                stroke="white"
+                                strokeWidth="1.5"
+                            />
+                            <g
+                                onMouseDown={() => setActiveHandle('out')}
+                                className="cursor-ew-resize group"
+                            >
+                                <rect
+                                    x={hXOut - 10}
+                                    y={BASE_Y - 10}
+                                    width="20"
+                                    height="20"
+                                    fill="transparent"
+                                />
+                                <rect
+                                    x={hXOut - 4}
+                                    y={BASE_Y - 4}
+                                    width="8"
+                                    height="8"
+                                    fill="#a2fa00"
+                                    className="diamond-fix group-hover:scale-125 transition-transform"
+                                />
+                            </g>
+                            <g
+                                onMouseDown={() => setActiveHandle('in')}
+                                className="cursor-ew-resize group"
+                            >
+                                <rect
+                                    x={hXIn - 10}
+                                    y={BASE_Y - 10}
+                                    width="20"
+                                    height="20"
+                                    fill="transparent"
+                                />
+                                <rect
+                                    x={hXIn - 4}
+                                    y={BASE_Y - 4}
+                                    width="8"
+                                    height="8"
+                                    fill="#a2fa00"
+                                    className="diamond-fix group-hover:scale-125 transition-transform"
+                                />
+                            </g>
+                        </svg>
+                    </div>
+                );
+            };
+
+            const Modal = ({ isOpen, onClose, title, children }) => {
+                if (!isOpen) return null;
+                return (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                        <div className="absolute inset-0  backdrop-blur-sm" onClick={onClose} />
+                        <div className="relative w-full max-w-[300px] bg-[#0f0f0f] border border-white/10 rounded-[1.5rem] shadow-2xl animate-modal overflow-hidden">
+                            <div className="px-6 py-4 border-b border-white/5 flex justify-between items-center bg-white/5">
+                                <h2 className="text-[11px] font-black tracking-widest text-white/60">
+                                    {title}
+                                </h2>
+                                <button
+                                    onClick={onClose}
+                                    className="text-white/20 hover:text-white transition-colors"
+                                >
+                                    <svg
+                                        width="14"
+                                        height="14"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="4"
+                                    >
+                                        <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" />
+                                    </svg>
+                                </button>
+                            </div>
+                            <div className="p-6">{children}</div>
+                        </div>
+                    </div>
+                );
+            };
+
+            const PresetCard = ({ preset, onSelect, onContextMenu }) => {
+                const [isAnimating, setIsAnimating] = useState(false);
+                const startX = 6,
+                    endX = 34,
+                    width = endX - startX,
+                    height = 12,
+                    topPadding = 6;
+                const baseY = height + topPadding;
+                const halfW = width / 2;
+
+                const { path, hXOut, hXIn } = useMemo(() => {
+                    if (preset.isEmpty) return {};
+                    const ho = preset.outInfluence / 100,
+                        hi = preset.inInfluence / 100;
+                    const steps = 40;
+                    let pts = [],
+                        maxV = 0;
+                    for (let i = 0; i <= steps; i++) {
+                        const t = i / steps;
+                        const v = getSpeedAtT(t, ho, hi);
+                        if (v > maxV) maxV = v;
+                        pts.push({ t, v });
+                    }
+                    const visualScale = (height * 0.75) / 1.5;
+                    const scale = Math.min(visualScale, height / Math.max(0.1, maxV));
+                    let d = '';
+                    for (let i = 0; i <= steps; i++) {
+                        const t = i / steps,
+                            mt = 1 - t;
+                        const x =
+                            (3 * mt * mt * t * ho + 3 * mt * t * t * (1 - hi) + t * t * t) * width;
+                        const y = height - pts[i].v * scale;
+                        d +=
+                            (i === 0 ? 'M ' : ' L ') +
+                            (x + startX).toFixed(1) +
+                            ',' +
+                            (y + topPadding).toFixed(1);
+                    }
+                    return {
+                        path: d,
+                        hXOut: startX + (preset.outInfluence / 100) * halfW,
+                        hXIn: endX - (preset.inInfluence / 100) * halfW,
+                    };
+                }, [preset]);
+
+                const handleClick = () => {
+                    if (isAnimating) return;
+                    setIsAnimating(true);
+                    onSelect(preset);
+                    setTimeout(() => setIsAnimating(false), 250);
+                };
+
+                return (
+                    <div
+                        onClick={handleClick}
+                        onContextMenu={(e) => {
+                            e.preventDefault();
+                            onContextMenu();
+                        }}
+                        className={`relative aspect-square rounded-2xl cursor-pointer flex flex-col items-center justify-center transition-all border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] group ${
+                            isAnimating ? 'click-pop' : ''
+                        }`}
+                    >
+                        {!preset.isEmpty ? (
+                            <React.Fragment>
+                                <svg
+                                    viewBox="0 0 40 28"
+                                    className="w-[80%] h-auto overflow-visible opacity-90 drop-shadow-md"
+                                >
+                                    <line
+                                        x1={startX}
+                                        y1={baseY}
+                                        x2={hXOut}
+                                        y2={baseY}
+                                        stroke="#e2e2ff"
+                                        strokeWidth="0.2"
+                                        strokeDasharray="1,1"
+                                        opacity="0.4"
+                                    />
+                                    <line
+                                        x1={endX}
+                                        y1={baseY}
+                                        x2={hXIn}
+                                        y2={baseY}
+                                        stroke="#e2e2ff"
+                                        strokeWidth="0.2"
+                                        strokeDasharray="1,1"
+                                        opacity="0.4"
+                                    />
+                                    <path
+                                        d={path}
+                                        fill="none"
+                                        stroke="#788bf1"
+                                        strokeWidth="1.3"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                    />
+                                    <rect
+                                        x={startX - 0.7}
+                                        y={baseY - 0.7}
+                                        width="1.4"
+                                        height="1.4"
+                                        fill="#141414"
+                                        stroke="white"
+                                        strokeWidth="0.5"
+                                    />
+                                    <rect
+                                        x={endX - 0.7}
+                                        y={baseY - 0.7}
+                                        width="1.4"
+                                        height="1.4"
+                                        fill="#141414"
+                                        stroke="white"
+                                        strokeWidth="0.5"
+                                    />
+                                    <rect
+                                        x={hXOut - 0.6}
+                                        y={baseY - 0.6}
+                                        width="1.2"
+                                        height="1.2"
+                                        fill="#a2fa00"
+                                        className="diamond-fix"
+                                    />
+                                    <rect
+                                        x={hXIn - 0.6}
+                                        y={baseY - 0.6}
+                                        width="1.2"
+                                        height="1.2"
+                                        fill="#a2fa00"
+                                        className="diamond-fix"
+                                    />
+                                </svg>
+                                <span className="absolute bottom-[10%] preset-label font-black text-white/60 group-hover:text-white transition-colors">
+                                    {preset.name}
+                                </span>
+                            </React.Fragment>
+                        ) : (
+                            <span className="text-white/10 text-[6vmin] font-light group-hover:text-white/40 group-hover:scale-110 transition-all">
+                                +
+                            </span>
+                        )}
+                    </div>
+                );
+            };
+
+            const App = () => {
+                const [state, setState] = useState(() => {
+                    try {
+                        const saved = localStorage.getItem(STORAGE_KEY);
+                        if (saved) return JSON.parse(saved);
+                    } catch (e) {}
+                    return { presets: INITIAL_PRESETS };
+                });
+
+                const [modal, setModal] = useState({
+                    isOpen: false,
+                    presetId: null,
+                    out: 33.3,
+                    inf: 33.3,
+                    name: '',
+                });
+
+                useEffect(() => {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+                }, [state]);
+
+                const handleSelect = (s) => {
+                    if (s.isEmpty) {
+                        setModal({
+                            isOpen: true,
+                            presetId: s.id,
+                            out: 33.3,
+                            inf: 33.3,
+                            name: 'Name',
+                        });
+                    } else if (window.__adobe_cep__) {
+                        new CSInterface().evalScript(
+                            `applySpeedGraph(${s.inInfluence}, ${s.outInfluence})`
+                        );
+                    }
+                };
+
+                const handleSave = () => {
+                    const newPresets = state.presets.map((p) =>
+                        p.id === modal.presetId
+                            ? {
+                                  ...p,
+                                  outInfluence: modal.out,
+                                  inInfluence: modal.inf,
+                                  name: modal.name.toUpperCase() || 'Name',
+                                  isEmpty: false,
+                              }
+                            : p
+                    );
+                    setState({ presets: newPresets });
+                    if (window.__adobe_cep__) {
+                        new CSInterface().evalScript(`applySpeedGraph(${modal.inf}, ${modal.out})`);
+                    }
+                    setModal({ ...modal, isOpen: false });
+                };
+
+                return (
+                    <div className="flex items-center justify-center h-full w-full bg-[]">
+                        <main className="grid-container w-full h-full">
+                            <div className="pro-grid">
+                                {state.presets.map((p) => (
+                                    <PresetCard
+                                        key={p.id}
+                                        preset={p}
+                                        onSelect={handleSelect}
+                                        onContextMenu={() => {
+                                            setModal({
+                                                isOpen: true,
+                                                presetId: p.id,
+                                                out: p.outInfluence,
+                                                inf: p.inInfluence,
+                                                name: p.name,
+                                            });
+                                        }}
+                                    />
+                                ))}
+                            </div>
+                        </main>
+
+                        <Modal
+                            isOpen={modal.isOpen}
+                            onClose={() => setModal({ ...modal, isOpen: false })}
+                            title="Edit Preset"
+                        >
+                            <div className="flex flex-col space-y-6">
+                                <input
+                                    type="text"
+                                    value={modal.name}
+                                    onChange={(e) => setModal({ ...modal, name: e.target.value })}
+                                    className="bg-white/10 border border-white/20 rounded-xl px-4 py-4 text-center text-sm tracking-widest focus:border-blue-500/50 outline-none text-white"
+                                    placeholder="NAME"
+                                />
+
+                                <div className="flex justify-between px-4 bg-white/5 py-3 rounded-2xl border border-white/5">
+                                    <div className="text-center">
+                                        <div className="text-[9px] text-white/40 tracking-wider mb-1">
+                                            OUT
+                                        </div>
+                                        <div className="mono-val text-amber-1 text-lg leading-none">
+                                            {modal.out.toFixed(1)}%
+                                        </div>
+                                    </div>
+                                    <div className="w-px h-8 bg-white/10 self-center" />
+                                    <div className="text-center">
+                                        <div className="text-[9px] text-white/40 tracking-wider mb-1">
+                                            IN
+                                        </div>
+                                        <div className="mono-val text-amber-1 text-lg leading-none">
+                                            {modal.inf.toFixed(1)}%
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <GraphEditor
+                                    outInfluence={modal.out}
+                                    inInfluence={modal.inf}
+                                    onUpdate={(o, i) => setModal({ ...modal, out: o, inf: i })}
+                                />
+
+                                <button
+                                    onClick={handleSave}
+                                    className="w-full bg-[#788bf1] hover:bg-[#4f52f5] py-5 rounded-2xl text-[12px] tracking-widest transition-all shadow-xl active:scale-95 text-white custom-btn"
+                                >
+                                    Save
+                                </button>
+
+                                <button
+                                    onClick={() => {
+                                        const newPresets = state.presets.map((p) =>
+                                            p.id === modal.presetId
+                                                ? { ...p, isEmpty: true, name: '' }
+                                                : p
+                                        );
+                                        setState({ presets: newPresets });
+                                        setModal({ ...modal, isOpen: false });
+                                    }}
+                                    className="w-full bg-[#ad0000] hover:bg-[#ff0000] py-5 rounded-2xl text-[12px] tracking-widest transition-all shadow-xl active:scale-95 text-white custom-btn"
+                                >
+                                    Remove
+                                </button>
+                            </div>
+                        </Modal>
+                    </div>
+                );
+            };
+            ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+        </script>
+    </body>
+</html>

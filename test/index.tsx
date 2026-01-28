@@ -1,0 +1,1 @@
+// Entry point is now handled in index.html via Babel for better CEP compatibility.

@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ExtensionManifest Version="9.0" 
+    ExtensionBundleId="com.darkpanel" 
+    ExtensionBundleVersion="1.2"
+    ExtensionBundleName="darkPanel with Speed Graph Pro">
+
+  <ExtensionList>
+    <Extension Id="com.darkpanel.panel" Version="1.2"/>
+  </ExtensionList>
+
+  <ExecutionEnvironment>
+    <HostList>
+      <Host Name="AEFT" Version="[17.0,99.9]"/>
+    </HostList>
+    <LocaleList>
+      <Locale Code="All"/>
+    </LocaleList>
+    <RequiredRuntimeList>
+        <RequiredRuntime Name="CSXS" Version="9.0" />
+    </RequiredRuntimeList>
+  </ExecutionEnvironment>
+
+  <DispatchInfoList>
+    <Extension Id="com.darkpanel.panel">
+      <DispatchInfo>
+        <Resources>
+          <MainPath>./index.html</MainPath>
+          <ScriptPath>./jsx/applyPreset.jsx</ScriptPath>
+           
+          <CEFCommandLine>
+            <Parameter>--allow-file-access-from-files</Parameter>
+            <Parameter>--enable-nodejs</Parameter>
+            <Parameter>--disable-web-security</Parameter>
+            <Parameter>--allow-file-access</Parameter>
+          </CEFCommandLine>
+        </Resources>
+
+        <Lifecycle>
+            <AutoVisible>true</AutoVisible>
+        </Lifecycle>
+
+        <UI>
+          <Type>Panel</Type>
+          <Menu>darkPanel</Menu>
+          <Geometry>
+            <Size>
+              <!-- Graph uchun kattaroq o'lcham -->
+              <Width>850</Width>
+              <Height>600</Height>
+            </Size>
+            <MinSize>
+              <Width>350</Width>
+              <Height>500</Height>
+            </MinSize>
+            <MaxSize>
+              <Width>1000</Width>
+              <Height>800</Height>
+            </MaxSize>
+          </Geometry>
+        </UI>
+
+      </DispatchInfo>
+    </Extension>
+  </DispatchInfoList>
+
+</ExtensionManifest>

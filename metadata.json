@@ -1,0 +1,5 @@
+{
+    "name": "AE Speed Graph Tool",
+    "description": "A high-fidelity recreation of the Adobe After Effects Speed Graph editor, allowing precision control over ease-in and ease-out influence parameters with a professional dark-themed interface.",
+    "requestFramePermissions": []
+}
