@@ -1249,7 +1249,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                 const blob = await res.blob();
                 const base64 = await blobToBase64(blob);
 
-                // 3. Faylga yozish
+                // 3. Fayl yozish (Chunking)
                 const chunkSize = 20000;
                 const chunks = [];
                 for (let i = 0; i < base64.length; i += chunkSize) {
@@ -1267,165 +1267,168 @@ document.addEventListener('DOMContentLoaded', async function () {
                     for (let i = 0; i < chunks.length; i++) {
                         const chunk = chunks[i];
                         const writeScript = `(function(){ 
+                            var f=new File("${escapedPath}"); f.encoding="BINARY"; f.open("a"); 
                             function b64d(s) { var k="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=", o="", b=0, x=0, c; for(var i=0;i<s.length;i++){ c=s.charAt(i); if(c=='=')break; var v=k.indexOf(c); if(v<0)continue; b=(b<<6)|v; x+=6; if(x>=8){x-=8; o+=String.fromCharCode((b>>x)&0xFF);} } return o; }
-                            var f=new File("${escapedPath}"); f.encoding="BINARY"; f.open("a"); f.write(b64d("${chunk}")); f.close(); 
+                            f.write(b64d("${chunk}")); f.close(); 
                         })()`;
                         await new Promise((r) => csInterface.evalScript(writeScript, r));
                     }
 
-                    // --- APPLY SCRIPT (UNDO FIX) ---
+                    // --- APPLY SCRIPT (UNDO & POSITION FIX) ---
                     let applyScript;
 
                     if (isAEP) {
-                        // .AEP: EXPRESSION BAKE + STABLE UNDO
                         applyScript = `(function(){ 
-                            // O'zgaruvchilarni tashqarida e'lon qilamiz
-                            var importedItem = null;
                             var resultMsg = "Success";
-                            
-                            // UNDO GROUP BOSHLANDI
-                            app.beginUndoGroup("Apply DarkPanel Preset");
+                            var importedItem = null;
+
+                            // 1. UNDO GROUP BOSHLANDI (Hamma ish shu ichida bo'ladi)
+                            app.beginUndoGroup("Apply Smart Preset");
 
                             try {
                                 var f = new File("${escapedPath}");
-                                if(!f.exists) throw new Error("File not found");
+                                if(!f.exists) throw new Error("File missing");
                                 
-                                var targetComp = app.project.activeItem;
-                                if (!targetComp || !(targetComp instanceof CompItem)) throw new Error("Select a composition");
-                                var targetLayers = targetComp.selectedLayers;
-                                if (targetLayers.length === 0) throw new Error("Select a layer");
+                                var comp = app.project.activeItem;
+                                if (!comp || !(comp instanceof CompItem)) throw new Error("No Comp");
+                                var layers = comp.selectedLayers;
+                                if (layers.length === 0) throw new Error("No Layer");
 
-                                // 1. Import (Undo Group ichida bo'lishi SHART)
+                                // 2. Import
                                 var io = new ImportOptions(f);
                                 importedItem = app.project.importFile(io);
                                 
-                                // 2. Source Comp va Info
-                                var sourceComp = null;
-                                if (importedItem instanceof CompItem) sourceComp = importedItem;
-                                else if (importedItem instanceof FolderItem) {
-                                    for (var i = 1; i <= importedItem.numItems; i++) {
-                                        if (importedItem.item(i) instanceof CompItem) { sourceComp = importedItem.item(i); break; }
+                                // Source Compni topish
+                                var srcComp = (importedItem instanceof CompItem) ? importedItem : null;
+                                if (!srcComp && importedItem instanceof FolderItem) {
+                                    for (var i=1; i<=importedItem.numItems; i++) {
+                                        if (importedItem.item(i) instanceof CompItem) { srcComp = importedItem.item(i); break; }
                                     }
                                 }
-                                if (!sourceComp) throw new Error("Bad AEP structure");
+                                if (!srcComp) throw new Error("Bad AEP");
 
-                                var sourceLayer = sourceComp.layer(1); 
-                                var srcW = sourceLayer.width;
-                                var srcH = sourceLayer.height;
-
-                                var effectsGroup = sourceLayer.property("ADBE Effect Parade");
+                                var srcLayer = srcComp.layer(1); 
                                 
-                                if (effectsGroup.numProperties > 0) {
-                                    // Nusxalash
-                                    sourceComp.openInViewer();
-                                    for(var j=0; j<sourceComp.selectedLayers.length; j++) sourceComp.selectedLayers[j].selected = false;
-                                    
-                                    sourceLayer.selected = false;
-                                    for (var k = 1; k <= effectsGroup.numProperties; k++) effectsGroup.property(k).selected = true;
-                                    app.executeCommand(app.findMenuCommandId("Copy"));
-                                    
-                                    // Paste
-                                    targetComp.openInViewer();
-                                    app.executeCommand(app.findMenuCommandId("Paste"));
+                                // --- MUHIM: Source Layer o'lchamlari (Normalize qilish uchun) ---
+                                // Biz effekt .aep da qaysi foizda turganini hisoblaymiz
+                                var srcW = srcLayer.width; 
+                                var srcH = srcLayer.height; 
 
-                                    // --- LOGIKA: EXPRESSION BAKE (AUTO-FIT) ---
+                                // 3. Copy
+                                var effGroup = srcLayer.property("ADBE Effect Parade");
+                                if (effGroup.numProperties > 0) {
+                                    srcComp.openInViewer();
+                                    // Deselect all in source
+                                    for(var j=0; j<srcComp.selectedLayers.length; j++) srcComp.selectedLayers[j].selected = false;
+                                    srcLayer.selected = false;
                                     
-                                    function checkPosName(pName) {
-                                        var names = ["Center", "Position", "Light Center", "From", "To", "Start", "End", "Anchor", "Point 1", "Point 2", "Flare Center"];
-                                        for(var x=0; x<names.length; x++) { if(names[x] === pName) return true; }
-                                        return false;
+                                    // Select effects
+                                    for(var k=1; k<=effGroup.numProperties; k++) effGroup.property(k).selected = true;
+                                    app.executeCommand(app.findMenuCommandId("Copy")); // Copy Effects
+                                    
+                                    // 4. Paste to Target
+                                    comp.openInViewer();
+                                    app.executeCommand(app.findMenuCommandId("Paste")); // Paste Effects
+
+                                    // --- 5. SMART FIX LOGIC (EXPRESSION BAKE METHOD) ---
+                                    // Bu usul eng aniq va ishonchli
+                                    
+                                    function isPosProp(name) {
+                                        return /Center|Position|Point|Anchor|Start|End|From|To/.test(name);
                                     }
-                                    
-                                    function checkSizeName(pName) {
-                                        var names = ["Width", "Thickness", "Radius", "Size", "Softness", "Intensity", "Border", "Height"];
-                                        for(var x=0; x<names.length; x++) { if(names[x] === pName) return true; }
-                                        return false;
+                                    function isSizeProp(name) {
+                                        return /Width|Size|Thickness|Radius|Softness|Border|Intensity/.test(name);
                                     }
 
-                                    for (var L = 0; L < targetLayers.length; L++) {
-                                        var layer = targetLayers[L];
-                                        var layerEffects = layer.property("ADBE Effect Parade");
+                                    for (var L=0; L<layers.length; L++) {
+                                        var layer = layers[L];
                                         
-                                        // A) SIZE SCALING
-                                        var rect = layer.sourceRectAtTime(targetComp.time, false);
+                                        // Target Visual Bounds (Rasmning haqiqiy chegarasi)
+                                        var rect = layer.sourceRectAtTime(comp.time, false);
                                         var visW = (rect.width < 1) ? layer.width : rect.width;
                                         var visH = (rect.height < 1) ? layer.height : rect.height;
-                                        var avgScale = ((visW / srcW) + (visH / srcH)) / 2;
+                                        
+                                        // O'lcham farqi (Scale Ratio)
+                                        var scaleRatio = ((visW / srcW) + (visH / srcH)) / 2;
 
-                                        for (var E = 1; E <= layerEffects.numProperties; E++) {
-                                            var effect = layerEffects.property(E);
+                                        var lEffects = layer.property("ADBE Effect Parade");
+                                        // Faqat tanlangan (yangi tushgan) effektlarni tekshiramiz
+                                        for (var E=1; E<=lEffects.numProperties; E++) {
+                                            var effect = lEffects.property(E);
                                             if (effect.selected) {
                                                 
-                                                for (var P = 1; P <= effect.numProperties; P++) {
+                                                for (var P=1; P<=effect.numProperties; P++) {
                                                     var prop = effect.property(P);
-
-                                                    // 1. Qalinlikni to'g'irlash
-                                                    if (prop.propertyValueType === PropertyValueType.OneD && checkSizeName(prop.name)) {
-                                                        if (prop.value > 0) prop.setValue(prop.value * avgScale);
+                                                    
+                                                    // A) Size Scaling (Qalinlikni to'g'irlash)
+                                                    if (prop.propertyValueType === PropertyValueType.OneD && isSizeProp(prop.name)) {
+                                                        if (prop.value > 0) prop.setValue(prop.value * scaleRatio);
                                                     }
-
-                                                    // 2. POSITION - EXPRESSION BAKE
-                                                    else if (prop.propertyValueType === PropertyValueType.TwoD_SPATIAL && checkPosName(prop.name)) {
+                                                    
+                                                    // B) Position Fixing (Bake Method)
+                                                    else if (prop.propertyValueType === PropertyValueType.TwoD_SPATIAL && isPosProp(prop.name)) {
                                                         var oldVal = prop.value;
-                                                        var pX = oldVal[0] / srcW;
-                                                        var pY = oldVal[1] / srcH;
                                                         
-                                                        // Expression yozish
-                                                        var expr = "var r = thisLayer.sourceRectAtTime(time, false); [r.left + r.width * " + pX + ", r.top + r.height * " + pY + "];";
+                                                        // 1. Normallashtirish (0.0 - 1.0)
+                                                        var nX = oldVal[0] / srcW;
+                                                        var nY = oldVal[1] / srcH;
+                                                        
+                                                        // 2. Expression yozish
+                                                        // "Rasmning boshlanishi + (Rasm kengligi * Foiz)"
+                                                        // Bu ShapeLayerlarda ham, PNGlarda ham ishlaydi
+                                                        var expr = "var r = thisLayer.sourceRectAtTime(time,false); [r.left + r.width*" + nX + ", r.top + r.height*" + nY + "]";
+                                                        
                                                         prop.expression = expr;
                                                         
-                                                        // Bake qilish (Xotiraga olish)
-                                                        var bakedValue = prop.valueAtTime(targetComp.time, false);
-                                                        prop.expression = ""; // O'chirish
-                                                        prop.setValue(bakedValue); // Yozish
+                                                        // 3. Qiymatni "pishirish" (Bake)
+                                                        // Expression hisoblagan to'g'ri qiymatni olamiz
+                                                        var bakedVal = prop.valueAtTime(comp.time, false);
+                                                        
+                                                        // 4. Expressionni o'chiramiz
+                                                        prop.expression = "";
+                                                        prop.setValue(bakedVal);
                                                     }
                                                 }
                                             }
                                         }
                                     }
                                 }
-                            
-                            } catch(e) { 
-                                resultMsg = "Error: " + e.toString();
+
+                            } catch(err) {
+                                resultMsg = "Error: " + err.toString();
                             } finally {
-                                // HAR DOIM BAJARILADIGAN QISM (Tozalash va Undo yopish)
-                                if(importedItem) {
-                                    importedItem.remove(); // Import qilingan faylni o'chiramiz
+                                // 6. TOZALASH (UNDO GROUP ICHIDA)
+                                // Faylni o'chiramiz. Bu Ctrl+Z qilinganda "File Import"ni ham qaytarib yuboradi.
+                                if (importedItem) {
+                                    importedItem.remove();
                                 }
                                 
-                                // GURUHNI YOPISH (Eng muhimi shu!)
+                                // GURUHNI YOPISH (MUHIM!)
                                 app.endUndoGroup();
                             }
                             
                             return resultMsg;
                         })()`;
                     } else {
-                        // .FFX (Bu yerda ham Undo Group to'g'irlangan)
+                        // .FFX logic (Short & Safe)
                         applyScript = `(function(){ 
                             var res = "Success";
                             app.beginUndoGroup("Apply Preset");
                             try {
                                 var f=new File("${escapedPath}"); 
-                                if(!f.exists) throw new Error("Not found"); 
+                                if(!f.exists) throw new Error("Missing"); 
                                 var c=app.project.activeItem; 
-                                if(!c || !(c instanceof CompItem)) throw new Error("No comp"); 
+                                if(!c) throw new Error("No Comp"); 
                                 var s=c.selectedLayers; 
-                                if(s.length == 0) throw new Error("Select layer");
                                 for(var i=0;i<s.length;i++) s[i].applyPreset(f);
-                            } catch(err) { 
-                                res = "Error: " + err.toString(); 
-                            } finally {
-                                if(typeof f !== 'undefined') try{f.remove();}catch(_){}
-                                app.endUndoGroup();
-                            }
+                            } catch(e) { res = "Error: " + e.toString(); } 
+                            finally { app.endUndoGroup(); }
                             return res;
                         })()`;
                     }
 
                     csInterface.evalScript(applyScript, (result) => {
                         if (result && result.indexOf('Success') !== -1) {
-                            // Success check simple
-                            showApplyToast(isAEP ? 'EFFECTS ADDED' : 'APPLIED');
                             const lastAction = document.getElementById('dp-last-action');
                             const lastTime = document.getElementById('dp-last-time');
                             if (lastAction)
@@ -1434,6 +1437,14 @@ document.addEventListener('DOMContentLoaded', async function () {
                                 const now = new Date();
                                 lastTime.textContent = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
                             }
+                            const toast = document.createElement('div');
+                            toast.className = 'apply-toast';
+                            toast.textContent = isAEP ? 'EFFECTS ADDED' : 'APPLIED';
+                            document.body.appendChild(toast);
+                            setTimeout(() => {
+                                toast.classList.add('hide');
+                                setTimeout(() => toast.remove(), 500);
+                            }, 1500);
                         } else {
                             console.error(result);
                             const toast = document.createElement('div');
