@@ -1223,6 +1223,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         }
 
         async function applyPreset() {
+            // 1. Validatsiya
             if (!selectedPreset) {
                 const toast = document.createElement('div');
                 toast.className = 'apply-toast';
@@ -1242,11 +1243,13 @@ document.addEventListener('DOMContentLoaded', async function () {
             console.log(`Applying ${extension.toUpperCase()}:`, selectedPreset);
 
             try {
+                // 2. Yuklab olish
                 const res = await fetch(remotePresetUrl, { cache: 'no-store' });
                 if (!res.ok) throw new Error('Preset not found');
                 const blob = await res.blob();
                 const base64 = await blobToBase64(blob);
 
+                // 3. Faylga yozish
                 const chunkSize = 20000;
                 const chunks = [];
                 for (let i = 0; i < base64.length; i += chunkSize) {
@@ -1270,26 +1273,31 @@ document.addEventListener('DOMContentLoaded', async function () {
                         await new Promise((r) => csInterface.evalScript(writeScript, r));
                     }
 
-                    // --- APPLY SCRIPT ---
+                    // --- APPLY SCRIPT (UNDO FIX) ---
                     let applyScript;
 
                     if (isAEP) {
-                        // .AEP: EXPRESSION BAKE METHOD (100% RELIABLE)
+                        // .AEP: EXPRESSION BAKE + STABLE UNDO
                         applyScript = `(function(){ 
+                            // O'zgaruvchilarni tashqarida e'lon qilamiz
+                            var importedItem = null;
+                            var resultMsg = "Success";
+                            
+                            // UNDO GROUP BOSHLANDI
+                            app.beginUndoGroup("Apply DarkPanel Preset");
+
                             try {
                                 var f = new File("${escapedPath}");
-                                if(!f.exists) return "Error: File not found";
+                                if(!f.exists) throw new Error("File not found");
                                 
                                 var targetComp = app.project.activeItem;
-                                if (!targetComp || !(targetComp instanceof CompItem)) return "Error: Select a composition";
+                                if (!targetComp || !(targetComp instanceof CompItem)) throw new Error("Select a composition");
                                 var targetLayers = targetComp.selectedLayers;
-                                if (targetLayers.length === 0) return "Error: Select a layer";
+                                if (targetLayers.length === 0) throw new Error("Select a layer");
 
-                                app.beginUndoGroup("Add Effects Auto-Fit");
-
-                                // 1. Import
+                                // 1. Import (Undo Group ichida bo'lishi SHART)
                                 var io = new ImportOptions(f);
-                                var importedItem = app.project.importFile(io);
+                                importedItem = app.project.importFile(io);
                                 
                                 // 2. Source Comp va Info
                                 var sourceComp = null;
@@ -1299,7 +1307,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                                         if (importedItem.item(i) instanceof CompItem) { sourceComp = importedItem.item(i); break; }
                                     }
                                 }
-                                if (!sourceComp) { importedItem.remove(); return "Error: Bad AEP"; }
+                                if (!sourceComp) throw new Error("Bad AEP structure");
 
                                 var sourceLayer = sourceComp.layer(1); 
                                 var srcW = sourceLayer.width;
@@ -1308,6 +1316,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                                 var effectsGroup = sourceLayer.property("ADBE Effect Parade");
                                 
                                 if (effectsGroup.numProperties > 0) {
+                                    // Nusxalash
                                     sourceComp.openInViewer();
                                     for(var j=0; j<sourceComp.selectedLayers.length; j++) sourceComp.selectedLayers[j].selected = false;
                                     
@@ -1315,10 +1324,11 @@ document.addEventListener('DOMContentLoaded', async function () {
                                     for (var k = 1; k <= effectsGroup.numProperties; k++) effectsGroup.property(k).selected = true;
                                     app.executeCommand(app.findMenuCommandId("Copy"));
                                     
+                                    // Paste
                                     targetComp.openInViewer();
                                     app.executeCommand(app.findMenuCommandId("Paste"));
 
-                                    // --- 5. LOGIKA: EXPRESSION BAKE ---
+                                    // --- LOGIKA: EXPRESSION BAKE (AUTO-FIT) ---
                                     
                                     function checkPosName(pName) {
                                         var names = ["Center", "Position", "Light Center", "From", "To", "Start", "End", "Anchor", "Point 1", "Point 2", "Flare Center"];
@@ -1336,7 +1346,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                                         var layer = targetLayers[L];
                                         var layerEffects = layer.property("ADBE Effect Parade");
                                         
-                                        // A) SIZE SCALING (Buni oddiy matematika bilan qilamiz, tezroq)
+                                        // A) SIZE SCALING
                                         var rect = layer.sourceRectAtTime(targetComp.time, false);
                                         var visW = (rect.width < 1) ? layer.width : rect.width;
                                         var visH = (rect.height < 1) ? layer.height : rect.height;
@@ -1354,65 +1364,67 @@ document.addEventListener('DOMContentLoaded', async function () {
                                                         if (prop.value > 0) prop.setValue(prop.value * avgScale);
                                                     }
 
-                                                    // 2. POSITION - "EXPRESSION BAKE" (Sehrli qism)
+                                                    // 2. POSITION - EXPRESSION BAKE
                                                     else if (prop.propertyValueType === PropertyValueType.TwoD_SPATIAL && checkPosName(prop.name)) {
                                                         var oldVal = prop.value;
-                                                        
-                                                        // Source dagi foiz
                                                         var pX = oldVal[0] / srcW;
                                                         var pY = oldVal[1] / srcH;
                                                         
-                                                        // Expression yozamiz: "Rasmning N foiziga bor"
-                                                        // Bu expression After Effects ichida ishlaydi va har qanday koordinatani to'g'ri topadi
+                                                        // Expression yozish
                                                         var expr = "var r = thisLayer.sourceRectAtTime(time, false); [r.left + r.width * " + pX + ", r.top + r.height * " + pY + "];";
-                                                        
-                                                        // Expressionni qo'llaymiz
                                                         prop.expression = expr;
                                                         
-                                                        // Hozirgi hisoblangan qiymatni olamiz (BAKE)
+                                                        // Bake qilish (Xotiraga olish)
                                                         var bakedValue = prop.valueAtTime(targetComp.time, false);
-                                                        
-                                                        // Expressionni o'chiramiz
-                                                        prop.expression = "";
-                                                        
-                                                        // To'g'ri qiymatni yozib qo'yamiz
-                                                        prop.setValue(bakedValue);
+                                                        prop.expression = ""; // O'chirish
+                                                        prop.setValue(bakedValue); // Yozish
                                                     }
                                                 }
                                             }
                                         }
                                     }
-                                } 
-                                
-                                importedItem.remove();
-                                app.endUndoGroup();
-                                return "Success: Perfect Fit";
+                                }
+                            
                             } catch(e) { 
-                                if(typeof importedItem !== 'undefined') importedItem.remove();
-                                return "Error: " + e.toString(); 
+                                resultMsg = "Error: " + e.toString();
+                            } finally {
+                                // HAR DOIM BAJARILADIGAN QISM (Tozalash va Undo yopish)
+                                if(importedItem) {
+                                    importedItem.remove(); // Import qilingan faylni o'chiramiz
+                                }
+                                
+                                // GURUHNI YOPISH (Eng muhimi shu!)
+                                app.endUndoGroup();
                             }
+                            
+                            return resultMsg;
                         })()`;
                     } else {
-                        // .FFX
+                        // .FFX (Bu yerda ham Undo Group to'g'irlangan)
                         applyScript = `(function(){ 
+                            var res = "Success";
+                            app.beginUndoGroup("Apply Preset");
                             try {
                                 var f=new File("${escapedPath}"); 
-                                if(!f.exists) return "Error: Not found"; 
+                                if(!f.exists) throw new Error("Not found"); 
                                 var c=app.project.activeItem; 
-                                if(!c || !(c instanceof CompItem)) return "Error: No comp"; 
+                                if(!c || !(c instanceof CompItem)) throw new Error("No comp"); 
                                 var s=c.selectedLayers; 
-                                if(s.length == 0) return "Error: Select layer";
-                                app.beginUndoGroup("Apply Preset");
+                                if(s.length == 0) throw new Error("Select layer");
                                 for(var i=0;i<s.length;i++) s[i].applyPreset(f);
+                            } catch(err) { 
+                                res = "Error: " + err.toString(); 
+                            } finally {
+                                if(typeof f !== 'undefined') try{f.remove();}catch(_){}
                                 app.endUndoGroup();
-                                try { f.remove(); } catch(_) {}
-                                return "Success:" + s.length;
-                            } catch(err) { return "Error: " + err.toString(); }
+                            }
+                            return res;
                         })()`;
                     }
 
                     csInterface.evalScript(applyScript, (result) => {
-                        if (result && result.indexOf('Success:') === 0) {
+                        if (result && result.indexOf('Success') !== -1) {
+                            // Success check simple
                             showApplyToast(isAEP ? 'EFFECTS ADDED' : 'APPLIED');
                             const lastAction = document.getElementById('dp-last-action');
                             const lastTime = document.getElementById('dp-last-time');
@@ -1424,6 +1436,15 @@ document.addEventListener('DOMContentLoaded', async function () {
                             }
                         } else {
                             console.error(result);
+                            const toast = document.createElement('div');
+                            toast.className = 'apply-toast';
+                            toast.style.borderColor = 'red';
+                            toast.textContent = result.replace('Error: ', '') || 'ERROR';
+                            document.body.appendChild(toast);
+                            setTimeout(() => {
+                                toast.classList.add('hide');
+                                setTimeout(() => toast.remove(), 500);
+                            }, 2000);
                         }
                     });
                 });
