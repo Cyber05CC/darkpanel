@@ -1006,7 +1006,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                 preset.dataset.file = fileName;
 
                 const footageSrc = `${GITHUB_RAW}/assets/videos/${currentPack}_${realNum}.webp`;
-                const thumbSrc = `${GITHUB_RAW}/assets/thumbnails/${currentPack}_${realNum}.png`;
+                // const thumbSrc = `${GITHUB_RAW}/assets/thumbnails/${currentPack}_${realNum}.png`;
 
                 preset.innerHTML = `
                     <div class="preset-thumb">
@@ -1357,8 +1357,10 @@ document.addEventListener('DOMContentLoaded', async function () {
                                     var srcLayer = srcComp.layer(1);
                                     var isAdj = srcLayer.adjustmentLayer ? 1 : 0;
                                     var hasSource = sel[0].source ? 1 : 0;
+                                    var lw = 0, lh = 0;
+                                    if (hasSource) { lw = sel[0].source.width; lh = sel[0].source.height; }
 
-                                    return "OK:" + srcComp.id + ":" + sel[0].index + ":" + isAdj + ":" + hasSource + ":" + imported.id;
+                                    return "OK:" + srcComp.id + ":" + sel[0].index + ":" + isAdj + ":" + hasSource + ":" + imported.id + ":" + lw + ":" + lh;
                                 } catch(e) { return "ERR:" + e.toString(); }
                             })()`;
 
@@ -1372,6 +1374,8 @@ document.addEventListener('DOMContentLoaded', async function () {
                                 isAdj = p[3] === '1',
                                 hasSource = p[4] === '1',
                                 importedId = p[5];
+                            const layerW = parseInt(p[6]) || 0,
+                                layerH = parseInt(p[7]) || 0;
 
                             // ========== STEP 2: APPLY (TOZA UNDO GROUP) ==========
                             const step2 = `(function(){
@@ -1425,66 +1429,149 @@ document.addEventListener('DOMContentLoaded', async function () {
                                     if (isAdjustment) {
                                         // === ADJUSTMENT LAYER REJIMI ===
                                         // srcComp ichidagi adjustment layerning effectlarini
-                                        // YANGI adjustment layer ga ko'chirish
+                                        // haqiqiy adjustment layer ga ko'chirish (COMP EMAS!)
 
-                                        // 1) Yangi adjustment layer yaratish
+                                        var srcLayer = srcComp.layer(1);
+                                        var srcEffects = srcLayer.property("ADBE Effect Parade");
+
+                                        // 1) Haqiqiy adjustment layer yaratish (comp o'lchamida)
                                         var adjLayer = comp.layers.addSolid(
-                                            [1,1,1], 
-                                            srcComp.name || "Effect", 
-                                            comp.width, comp.height, 1, 
+                                            [1,1,1],
+                                            srcComp.name || "Adjustment",
+                                            comp.width, comp.height, 1,
                                             comp.duration
                                         );
                                         adjLayer.adjustmentLayer = true;
 
-                                        // 2) srcComp ni PRECOMP o'rniga ADJUSTMENT sifatida qo'shish
-                                        // Aslida adjustment layer effect lari bilan ishlaydi
-                                        // Shuning uchun srcComp ni layer sifatida qo'shamiz
-                                        // va adjustment qilamiz
-                                        adjLayer.remove(); // solid ni o'chiramiz
+                                        // 2) Effectlarni ko'chirish
+                                        if (srcEffects && srcEffects.numProperties > 0) {
+                                            var adjEffects = adjLayer.property("ADBE Effect Parade");
 
-                                        // srcComp ni layer sifatida qo'shish
-                                        var newLayer = comp.layers.add(srcComp);
-                                        newLayer.adjustmentLayer = true;
+                                            function copyProp(src, dst) {
+                                                try {
+                                                    if (src.propertyType === PropertyType.PROPERTY) {
+                                                        var vt = src.propertyValueType;
+                                                        if (vt === PropertyValueType.NO_VALUE || vt === PropertyValueType.CUSTOM_VALUE) return;
 
-                                        // Timing
-                                        newLayer.startTime = targetLayer.startTime;
-                                        newLayer.inPoint = targetLayer.inPoint;
-                                        newLayer.outPoint = targetLayer.outPoint;
+                                                        // Keyframelar
+                                                        if (src.isTimeVarying && src.numKeys > 0) {
+                                                            for (var k = 1; k <= src.numKeys; k++) {
+                                                                try { dst.setValueAtTime(src.keyTime(k), src.keyValue(k)); } catch(e){}
+                                                            }
+                                                            for (var k = 1; k <= src.numKeys; k++) {
+                                                                try { dst.setInterpolationTypeAtKey(k, src.keyInInterpolationType(k), src.keyOutInterpolationType(k)); } catch(e){}
+                                                                try {
+                                                                    var ie = src.keyInTemporalEase(k), oe = src.keyOutTemporalEase(k);
+                                                                    var ni=[], no=[];
+                                                                    for(var j=0;j<ie.length;j++){ni.push(new KeyframeEase(ie[j].speed,ie[j].influence));no.push(new KeyframeEase(oe[j].speed,oe[j].influence));}
+                                                                    dst.setTemporalEaseAtKey(k,ni,no);
+                                                                } catch(e){}
+                                                            }
+                                                        } else {
+                                                            try { dst.setValue(src.value); } catch(e){}
+                                                        }
+                                                        // Expression
+                                                        try { if(src.expressionEnabled && src.expression) dst.expression = src.expression; } catch(e){}
+                                                    } else if (src.propertyType === PropertyType.NAMED_GROUP || src.propertyType === PropertyType.INDEXED_GROUP) {
+                                                        for (var i = 1; i <= src.numProperties; i++) {
+                                                            try {
+                                                                var sp = src.property(i);
+                                                                var dp = null;
+                                                                try { dp = dst.property(sp.name); } catch(e){}
+                                                                if (!dp) { try { dp = dst.property(i); } catch(e){} }
+                                                                if (dp) copyProp(sp, dp);
+                                                            } catch(e){}
+                                                        }
+                                                    }
+                                                } catch(e){}
+                                            }
 
-                                        // Tanlangan layerning USTIGA qo'yish
-                                        var curIdx = targetLayer.index;
-                                        if (newLayer.index > curIdx) {
-                                            newLayer.moveBefore(comp.layer(curIdx));
-                                        } else if (newLayer.index < curIdx - 1) {
-                                            newLayer.moveAfter(comp.layer(curIdx - 1));
+                                            for (var ef = 1; ef <= srcEffects.numProperties; ef++) {
+                                                try {
+                                                    var srcEff = srcEffects.property(ef);
+                                                    var newEff = adjEffects.addProperty(srcEff.matchName);
+                                                    if (newEff) copyProp(srcEff, newEff);
+                                                } catch(e){}
+                                            }
                                         }
 
-                                        // Tanlash
+                                        // 3) Timing — tanlangan layer bilan bir xil
+                                        adjLayer.startTime = targetLayer.startTime;
+                                        adjLayer.inPoint = targetLayer.inPoint;
+                                        adjLayer.outPoint = targetLayer.outPoint;
+
+                                        // 4) Tanlangan layerning USTIGA qo'yish
+                                        var curIdx = targetLayer.index;
+                                        if (adjLayer.index > curIdx) {
+                                            adjLayer.moveBefore(comp.layer(curIdx));
+                                        }
+
+                                        // 5) Tanlash
                                         for (var d = 1; d <= comp.numLayers; d++) comp.layer(d).selected = false;
-                                        newLayer.selected = true;
-                                        try { newLayer.name = srcComp.name; } catch(e){}
-                                        newLayer.collapseTransformation = true;
+                                        adjLayer.selected = true;
+                                        try { adjLayer.name = srcComp.name || "Adjustment"; } catch(e){}
 
                                     } else if (targetHasSource) {
-                                        // === NORMAL REJIM (replaceSource) ===
+                                        // === NORMAL REJIM ===
+                                        // TUZILMA:
+                                        // Main Comp (1080×1920)
+                                        //   └── srcComp (1080×1920) + effectlar
+                                        //         └── innerComp (1080×1920) ← LAYER BOUNDS KATTA
+                                        //               └── PNG (540×250) markazda
+                                        //
+                                        // SABAB: effectlar LAYER BOUNDS ichida ishlaydi
+                                        // Agar PNG 540×250 bo'lsa → effect faqat 540×250 da
+                                        // innerComp = 1080×1920 → effect BUTUN COMP da tarqaladi
+                                        
                                         var srcLayer = srcComp.layer(1);
-                                        srcLayer.replaceSource(targetLayer.source, false);
+                                        var lw = ${layerW};
+                                        var lh = ${layerH};
+                                        
+                                        // 1) innerComp yaratish (MAIN COMP o'lchamida)
+                                        var innerComp = app.project.items.addComp(
+                                            targetLayer.name + "_inner",
+                                            comp.width, comp.height,
+                                            comp.pixelAspect,
+                                            comp.duration,
+                                            comp.frameRate
+                                        );
+                                        try { innerComp.parentFolder = dpFolder; } catch(e){}
 
-                                        // srcComp ni layer sifatida qo'shish
-                                        // SCALE QILMASLIK — faqat qo'shish
+                                        // 2) Layer source ni innerComp ichiga qo'shish
+                                        var innerLayer = innerComp.layers.add(targetLayer.source);
+                                        // Markazga joylash
+                                        innerLayer.property("ADBE Transform Group").property("ADBE Position").setValue([comp.width/2, comp.height/2]);
+
+                                        // 3) replaceSource — innerComp (1080×1920) ni srcComp ichiga
+                                        //    Endi layer bounds = 1080×1920 → effectlar to'liq ishlaydi!
+                                        srcLayer.replaceSource(innerComp, false);
+                                        
+                                        // 4) srcComp ni MAIN COMP o'lchamiga resize
+                                        srcComp.width = comp.width;
+                                        srcComp.height = comp.height;
+                                        srcComp.frameDuration = comp.frameDuration;
+                                        srcComp.duration = comp.duration;
+
+                                        // 5) Ichki layer markazga
+                                        try {
+                                            var inner = srcComp.layer(1);
+                                            inner.property("ADBE Transform Group").property("ADBE Position").setValue([comp.width/2, comp.height/2]);
+                                        } catch(e){}
+
+                                        // 6) srcComp ni main comp ga qo'shish
                                         var newLayer = comp.layers.add(srcComp);
+                                        newLayer.collapseTransformation = true;
 
-                                        // Timing ko'chirish
+                                        // 5) Timing ko'chirish
                                         newLayer.startTime = targetLayer.startTime;
                                         newLayer.inPoint = targetLayer.inPoint;
                                         newLayer.outPoint = targetLayer.outPoint;
 
-                                        // BARCHA TRANSFORM ko'chirish
+                                        // 6) BARCHA TRANSFORM ko'chirish
                                         try {
                                             var sT = targetLayer.property("ADBE Transform Group");
                                             var dT = newLayer.property("ADBE Transform Group");
                                             var tProps = ["ADBE Position","ADBE Scale","ADBE Rotate Z","ADBE Opacity"];
-                                            // 3D layer bo'lsa qo'shimcha
                                             try { if(targetLayer.threeDLayer) { tProps.push("ADBE Rotate X","ADBE Rotate Y"); newLayer.threeDLayer = true; } } catch(e){}
                                             for (var pi = 0; pi < tProps.length; pi++) {
                                                 try {
@@ -1504,20 +1591,19 @@ document.addEventListener('DOMContentLoaded', async function () {
                                             }
                                         } catch(e){}
 
-                                        // Layer tartibini to'g'rilash
+                                        // 7) Layer tartibini to'g'rilash
                                         var curIdx = targetLayer.index;
                                         if (curIdx > 1) {
                                             newLayer.moveAfter(comp.layer(curIdx));
                                         }
 
-                                        // Eski layerni o'chirish
+                                        // 8) Eski layerni o'chirish
                                         targetLayer.remove();
 
-                                        // Tanlash
+                                        // 9) Tanlash
                                         for (var d = 1; d <= comp.numLayers; d++) comp.layer(d).selected = false;
                                         newLayer.selected = true;
                                         try { newLayer.name = srcComp.name; } catch(e){}
-                                        newLayer.collapseTransformation = true;
 
                                     } else {
                                         // === SOURCE YO'Q (text, shape, null, camera) ===
