@@ -1006,7 +1006,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                 preset.dataset.file = fileName;
 
                 const footageSrc = `${GITHUB_RAW}/assets/videos/${currentPack}_${realNum}.webp`;
-                // const thumbSrc = `${GITHUB_RAW}/assets/thumbnails/${currentPack}_${realNum}.png`;
+                const thumbSrc = `${GITHUB_RAW}/assets/thumbnails/${currentPack}_${realNum}.png`;
 
                 preset.innerHTML = `
                     <div class="preset-thumb">
