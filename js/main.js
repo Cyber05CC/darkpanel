@@ -109,26 +109,18 @@ document.addEventListener('DOMContentLoaded', async function () {
             const src = img.dataset.src;
             if (!src) return;
 
-            // To'g'ridan-to'g'ri yuklash
+            // preset-img (webp footage) ni autoplay observer boshqaradi
+            // Lazy loader faqat static-thumb (PNG) larni yuklaydi
+            if (img.classList.contains('preset-img')) return;
+
             img.src = src;
             img.classList.remove('lazy');
 
             // Yuklanganda animatsiya
             img.onload = () => {
-                // Avval animatsiya uchun tayyorlaymiz
-                // Agar u allaqachon opacity 0 bo'lsa, tegmaymiz
-
                 requestAnimationFrame(() => {
                     img.style.transition = 'opacity 0.3s ease';
-
-                    // SHU YERDA O'ZGARTIRISH KIRITILDI:
-                    // Agar bu footage (preset-img) bo'lsa, u yuklanganda ham ko'rinmasligi kerak (opacity 0).
-                    // Faqat PNG (static-thumb) ko'rinishi kerak (opacity 1).
-                    if (img.classList.contains('preset-img')) {
-                        img.style.opacity = '0';
-                    } else {
-                        img.style.opacity = '1';
-                    }
+                    img.style.opacity = '1';
 
                     // Placeholder ni olib tashlash (faqat static thumb uchun)
                     const placeholder = img.previousElementSibling;
@@ -571,64 +563,95 @@ document.addEventListener('DOMContentLoaded', async function () {
         }
     });
 
-    let activePreviewImg = null;
+    // activePreviewImg o'chirildi — autoplay observer boshqaradi
     let selectedPresetEl = null;
     // 1. Play funksiyasini yangilaymiz
+    // ========== AUTOPLAY PREVIEW SYSTEM ==========
+    // Faqat ekranda ko'rinadigan presetlar o'ynaydi (IntersectionObserver)
+    // Ko'rinmaydigan presetlar to'xtaydi — FPS tushmaslik uchun
+
+    let autoplayObserver = null;
+    const autoplayingSet = new Set(); // hozir o'ynayotgan imglar
+
     function playPreview(img) {
-        if (!img) return;
+        if (!img || !img.dataset.src) return;
+        if (autoplayingSet.has(img)) return; // allaqachon o'ynayapti
 
-        // Agar hozir boshqa rasm o'ynayotgan bo'lsa...
-        if (activePreviewImg && activePreviewImg !== img) {
-            // Va u rasm TANLANGAN (Selected) kartochkaga tegishli bo'lmasa...
-            const activeCard = activePreviewImg.closest('.preset');
-            if (activeCard !== selectedPresetEl) {
-                // Uni to'xtatamiz
-                stopPreview(activePreviewImg);
-            }
-        }
-
-        // Yangi rasmni o'ynatamiz
         img.src = img.dataset.src;
         img.style.opacity = '1';
 
-        // Uning orqasidagi PNG ni yashiramiz
         const parent = img.closest('.preset-thumb');
         if (parent) {
             const png = parent.querySelector('.static-thumb');
             if (png) png.style.opacity = '0';
         }
 
-        activePreviewImg = img;
+        autoplayingSet.add(img);
     }
 
-    // 2. Stop funksiyasini yangilaymiz
     function stopPreview(img) {
         if (!img) return;
 
         img.removeAttribute('src');
         img.style.opacity = '0';
 
-        // Orqasidagi PNG ni qaytaramiz
         const parent = img.closest('.preset-thumb');
         if (parent) {
             const png = parent.querySelector('.static-thumb');
             if (png) png.style.opacity = '1';
         }
+
+        autoplayingSet.delete(img);
     }
 
-    // 3. Stop All funksiyasini yangilaymiz
     function stopAllPreviews() {
         document.querySelectorAll('.preset-img').forEach((img) => {
-            // Agar bu rasm TANLANGAN kartochkaniki bo'lsa, to'xtatmaymiz!
-            const card = img.closest('.preset');
-            if (card === selectedPresetEl) return;
-
             stopPreview(img);
         });
-        // Agar tanlangan rasm bo'lmasa, active ni null qilamiz
-        if (!selectedPresetEl) {
-            activePreviewImg = null;
+        autoplayingSet.clear();
+    }
+
+    function initAutoplayObserver() {
+        // Eski observerni tozalash
+        if (autoplayObserver) {
+            autoplayObserver.disconnect();
         }
+
+        autoplayObserver = new IntersectionObserver(
+            (entries) => {
+                entries.forEach((entry) => {
+                    const preset = entry.target;
+                    const img = preset.querySelector('.preset-img');
+                    if (!img || !img.dataset.src) return;
+
+                    if (entry.isIntersecting) {
+                        playPreview(img);
+                    } else {
+                        if (preset !== selectedPresetEl) {
+                            stopPreview(img);
+                        }
+                    }
+                });
+            },
+            {
+                rootMargin: '100px',
+                threshold: 0.1,
+            }
+        );
+    }
+
+    function observeVisiblePresets() {
+        if (!autoplayObserver) return;
+
+        // Avval hammasini unobserve
+        autoplayObserver.disconnect();
+
+        // Faqat display:block bo'lgan presetlarni observe
+        document.querySelectorAll('.preset').forEach((preset) => {
+            if (preset.style.display !== 'none') {
+                autoplayObserver.observe(preset);
+            }
+        });
     }
 
     let presets = [];
@@ -1029,54 +1052,39 @@ document.addEventListener('DOMContentLoaded', async function () {
                 const webpImg = preset.querySelector('.preset-img');
                 if (!webpImg) return;
 
-                /* --- HOVER KIRISH --- */
-                preset.addEventListener('mouseenter', () => {
-                    // Agar bu kartochka allaqachon tanlangan bo'lsa, tegmaymiz (u o'ynab turibdi)
-                    if (preset === selectedPresetEl) return;
-                    playPreview(webpImg);
-                });
+                // Hover endi kerak emas — autoplay observer boshqaradi
+                // Faqat CLICK (SELECT) qoldi
 
-                /* --- HOVER CHIQISH --- */
-                preset.addEventListener('mouseleave', () => {
-                    // Agar bu tanlangan kartochka bo'lsa, to'xtatmaymiz!
-                    if (preset === selectedPresetEl) return;
-                    stopPreview(webpImg);
-                });
-
-                /* --- CLICK (SELECT) --- */
                 preset.addEventListener('click', (e) => {
                     if (e.target.classList.contains('favorite-check')) return;
 
-                    // A) Eski tanlangan kartochkani to'xtatamiz (Endi u oddiy bo'lib qoladi)
+                    // A) Eski tanlangan kartochkani bekor qilish
                     if (selectedPresetEl && selectedPresetEl !== preset) {
                         selectedPresetEl.classList.remove('selected');
-                        const oldWebp = selectedPresetEl.querySelector('.preset-img');
-                        stopPreview(oldWebp); // PNG qaytadi, WebP to'xtaydi
                     }
 
-                    // B) Agar o'zini qayta bossak (Deselect)
+                    // B) O'zini qayta bosish (Deselect)
                     if (selectedPresetEl === preset) {
                         preset.classList.remove('selected');
-                        stopPreview(webpImg); // PNG qaytadi
                         selectedPresetEl = null;
                         selectedPreset = null;
                         if (status) status.textContent = 'No items selected';
                         return;
                     }
 
-                    // C) Yangi kartochkani tanlash
+                    // C) Yangi kartochka tanlash
                     preset.classList.add('selected');
                     selectedPresetEl = preset;
                     selectedPreset = preset.dataset.file;
-
-                    // WebP ni yoqamiz (PNG avtomatik yashirinadi playPreview ichida)
-                    playPreview(webpImg);
 
                     if (status) {
                         status.textContent = `Selected: ${preset.querySelector('.preset-name').textContent}`;
                     }
                 });
             });
+
+            // Autoplay observer ni ishga tushirish
+            initAutoplayObserver();
         }
         function setupPresetHoverEffects() {
             presets.forEach((preset) => {
@@ -1145,6 +1153,9 @@ document.addEventListener('DOMContentLoaded', async function () {
             if (pageInfo) pageInfo.textContent = `Page : ${currentPage}`;
             if (prevPageBtn) prevPageBtn.disabled = currentPage === 1;
             if (nextPageBtn) nextPageBtn.disabled = currentPage === totalPages;
+
+            // Autoplay: faqat ko'rinadigan presetlarni observe qilish
+            setTimeout(() => observeVisiblePresets(), 50);
         }
 
         function setupPresetSelection() {
@@ -1290,27 +1301,14 @@ document.addEventListener('DOMContentLoaded', async function () {
 
                     if (isAEP) {
                         // =====================================================
-                        // .AEP APPLY v10 — 3 TA ALOHIDA evalScript + JSON
+                        // .AEP APPLY v15
                         //
-                        // AE FUNDAMENTAL CHEGARASI:
-                        // importFile() va remove() HECH QACHON undo group ni
-                        // hurmat qilmaydi. DOIM alohida undo entry yaratadi.
-                        //
-                        // v10 YECHIMI:
-                        // 1) evalScript 1: import → serialize → JSON.stringify
-                        //    → $.global.__dpJSON = "string" → remove
-                        //
-                        // 2) evalScript 2: Undo × (1 + removeCount)
-                        //    Undo tarixidan import/remove TOZALANADI
-                        //    $.global dagi STRING saqlanib qoladi
-                        //
-                        // 3) evalScript 3: JSON.parse → beginUndoGroup
-                        //    → addProperty + setValue → endUndoGroup
-                        //    FAQAT SHU qoladi undo tarixida
-                        //
-                        // NATIJA:
-                        // CTRL+Z 1: "Apply Smart Preset" qaytadi
-                        // CTRL+Z 2: precomp qaytadi
+                        // TUZATISHLAR:
+                        // 1) Tashqi layerni scale QILMASLIK
+                        // 2) Project panelda "darkPanel" papkasi —
+                        //    hamma import shu ichiga, dublikat bo'lmaydi
+                        // 3) Adjustment layer qo'llab-quvvatlanadi
+                        // 4) Ichki layer transform ga TEGMASLIK
                         // =====================================================
 
                         const evalP = (script) =>
@@ -1319,110 +1317,48 @@ document.addEventListener('DOMContentLoaded', async function () {
                             });
 
                         try {
-                            // ========== STEP 1: IMPORT + SERIALIZE + REMOVE ==========
+                            // ========== STEP 1: IMPORT (undo group TASHQARIDA) ==========
                             const step1 = `(function(){
                                 try {
                                     var f = new File("${escapedPath}");
                                     if(!f.exists) return "ERR:File missing";
-                                    
+
                                     var comp = app.project.activeItem;
                                     if (!comp || !(comp instanceof CompItem)) return "ERR:No Comp";
-                                    var sl = comp.selectedLayers;
-                                    if (sl.length === 0) return "ERR:No Layer";
-                                    
-                                    var idxs = [];
-                                    for (var i = 0; i < sl.length; i++) idxs.push(sl[i].index);
+                                    var sel = comp.selectedLayers;
+                                    if (sel.length === 0) return "ERR:No Layer";
 
-                                    var oldIds = {};
-                                    for (var i = 1; i <= app.project.numItems; i++) {
-                                        oldIds[app.project.item(i).id] = true;
+                                    // Eski dp_temp itemlarni tozalash (CTRL+Z dan qolganlar)
+                                    for (var c = app.project.numItems; c >= 1; c--) {
+                                        try {
+                                            var itm = app.project.item(c);
+                                            if (itm.name === "dp_temp.aep" || itm.name === "dp_temp") {
+                                                itm.remove();
+                                            }
+                                        } catch(e){}
                                     }
-                                    
+
                                     var io = new ImportOptions(f);
                                     var imported = app.project.importFile(io);
-
-                                    var newItems = [];
-                                    for (var i = 1; i <= app.project.numItems; i++) {
-                                        var it = app.project.item(i);
-                                        if (!oldIds[it.id]) newItems.push(it);
-                                    }
 
                                     var srcComp = null;
                                     if (imported instanceof CompItem) {
                                         srcComp = imported;
                                     } else if (imported instanceof FolderItem) {
                                         for (var i = 1; i <= imported.numItems; i++) {
-                                            if (imported.item(i) instanceof CompItem) { srcComp = imported.item(i); break; }
-                                        }
-                                    }
-                                    if (!srcComp) {
-                                        for (var i = 0; i < newItems.length; i++) {
-                                            if (newItems[i] instanceof CompItem) { srcComp = newItems[i]; break; }
-                                        }
-                                    }
-                                    if (!srcComp || srcComp.numLayers === 0) {
-                                        for (var r = newItems.length-1; r >= 0; r--) { try{newItems[r].remove();}catch(e){} }
-                                        return "ERR:Bad AEP";
-                                    }
-
-                                    var srcLayer = srcComp.layer(1);
-                                    var srcW = srcLayer.width;
-                                    var srcH = srcLayer.height;
-                                    var srcEffects = srcLayer.property("ADBE Effect Parade");
-                                    if (!srcEffects || srcEffects.numProperties === 0) {
-                                        for (var r = newItems.length-1; r >= 0; r--) { try{newItems[r].remove();}catch(e){} }
-                                        return "ERR:No effects";
-                                    }
-
-                                    function ser(p) {
-                                        var o = {n:p.name,m:p.matchName,t:p.propertyType,vt:0,v:null,k:[],x:"",xo:false,c:[]};
-                                        try {
-                                            if (p.propertyType === PropertyType.PROPERTY) {
-                                                o.vt = p.propertyValueType;
-                                                if (o.vt===PropertyValueType.NO_VALUE||o.vt===PropertyValueType.CUSTOM_VALUE) return o;
-                                                try{if(p.expressionEnabled&&p.expression){o.x=p.expression;o.xo=true;}}catch(e){}
-                                                if (p.isTimeVarying && p.numKeys > 0) {
-                                                    for (var i=1;i<=p.numKeys;i++) {
-                                                        var kd={t:p.keyTime(i),v:p.keyValue(i),ii:-1,oi:-1,ie:null,oe:null,is:null,os:null};
-                                                        try{kd.ii=p.keyInInterpolationType(i);}catch(e){}
-                                                        try{kd.oi=p.keyOutInterpolationType(i);}catch(e){}
-                                                        try{
-                                                            var a=p.keyInTemporalEase(i),b=p.keyOutTemporalEase(i);
-                                                            kd.ie=[];kd.oe=[];
-                                                            for(var j=0;j<a.length;j++){kd.ie.push([a[j].speed,a[j].influence]);kd.oe.push([b[j].speed,b[j].influence]);}
-                                                        }catch(e){}
-                                                        try{
-                                                            if(o.vt===PropertyValueType.TwoD_SPATIAL||o.vt===PropertyValueType.ThreeD_SPATIAL){
-                                                                kd.is=p.keyInSpatialTangent(i);kd.os=p.keyOutSpatialTangent(i);
-                                                            }
-                                                        }catch(e){}
-                                                        o.k.push(kd);
-                                                    }
-                                                } else { try{o.v=p.value;}catch(e){} }
-                                            } else if(p.propertyType===PropertyType.NAMED_GROUP||p.propertyType===PropertyType.INDEXED_GROUP){
-                                                for(var i=1;i<=p.numProperties;i++){try{o.c.push(ser(p.property(i)));}catch(e){}}
+                                            if (imported.item(i) instanceof CompItem) {
+                                                srcComp = imported.item(i); break;
                                             }
-                                        } catch(e){}
-                                        return o;
+                                        }
                                     }
+                                    if (!srcComp || srcComp.numLayers === 0) return "ERR:Bad AEP";
 
-                                    var effs = [];
-                                    for (var i=1;i<=srcEffects.numProperties;i++) {
-                                        try{var e=srcEffects.property(i);effs.push({m:e.matchName,d:ser(e)});}catch(e){}
-                                    }
-                                    if (effs.length === 0) {
-                                        for (var r=newItems.length-1;r>=0;r--){try{newItems[r].remove();}catch(e){}}
-                                        return "ERR:Serialize failed";
-                                    }
+                                    // Adjustment layer tekshirish
+                                    var srcLayer = srcComp.layer(1);
+                                    var isAdj = srcLayer.adjustmentLayer ? 1 : 0;
+                                    var hasSource = sel[0].source ? 1 : 0;
 
-                                    $.global.__dpJSON = JSON.stringify({effs:effs,srcW:srcW,srcH:srcH,idxs:idxs});
-
-                                    var rmCount = 0;
-                                    for (var r=newItems.length-1;r>=0;r--) {
-                                        try{newItems[r].remove();rmCount++;}catch(e){}
-                                    }
-
-                                    return "OK:" + rmCount;
+                                    return "OK:" + srcComp.id + ":" + sel[0].index + ":" + isAdj + ":" + hasSource + ":" + imported.id;
                                 } catch(e) { return "ERR:" + e.toString(); }
                             })()`;
 
@@ -1430,140 +1366,192 @@ document.addEventListener('DOMContentLoaded', async function () {
                             console.log('[dp step1]', r1);
                             if (r1.indexOf('ERR') === 0) throw new Error(r1.replace('ERR:', ''));
 
-                            var rmCount = parseInt(r1.split(':')[1]) || 0;
-                            var undoCount = 1 + rmCount;
+                            const p = r1.split(':');
+                            const srcId = p[1],
+                                tIdx = p[2],
+                                isAdj = p[3] === '1',
+                                hasSource = p[4] === '1',
+                                importedId = p[5];
 
-                            // ========== STEP 2: UNDO × N ==========
-                            var undoCmds = '';
-                            for (var u = 0; u < undoCount; u++) {
-                                undoCmds += 'app.executeCommand(app.findMenuCommandId("Undo"));';
-                            }
-                            const step2 =
-                                '(function(){try{' +
-                                undoCmds +
-                                'var c=app.project.activeItem;' +
-                                'if(c&&c instanceof CompItem){' +
-                                'var d=JSON.parse($.global.__dpJSON);' +
-                                'for(var i=1;i<=c.numLayers;i++)c.layer(i).selected=false;' +
-                                'for(var i=0;i<d.idxs.length;i++){try{c.layer(d.idxs[i]).selected=true;}catch(e){}}' +
-                                '}return "OK";}catch(e){return "ERR:"+e.toString();}})()';
-
-                            const r2 = await evalP(step2);
-                            console.log('[dp step2] undoCount=' + undoCount, r2);
-
-                            // ========== STEP 3: APPLY (TOZA UNDO GROUP) ==========
-                            const step3 = `(function(){
+                            // ========== STEP 2: APPLY (TOZA UNDO GROUP) ==========
+                            const step2 = `(function(){
                                 var undoStarted = false;
                                 try {
-                                    var raw = $.global.__dpJSON;
-                                    if (!raw) return "Error: No data";
-                                    var d = JSON.parse(raw);
-                                    var effs = d.effs;
-                                    var srcW = d.srcW;
-                                    var srcH = d.srcH;
-                                    if (!effs || effs.length === 0) return "Error: Empty";
-
                                     var comp = app.project.activeItem;
                                     if (!comp || !(comp instanceof CompItem)) return "Error: No Comp";
-                                    var layers = comp.selectedLayers;
-                                    if (layers.length === 0) return "Error: No Layer";
+
+                                    // srcComp topish
+                                    var srcComp = null;
+                                    for (var i = 1; i <= app.project.numItems; i++) {
+                                        if (app.project.item(i).id == ${srcId}) { srcComp = app.project.item(i); break; }
+                                    }
+                                    if (!srcComp) return "Error: srcComp not found";
+
+                                    // Imported item topish (papkaga ko'chirish uchun)
+                                    var importedItem = null;
+                                    for (var i = 1; i <= app.project.numItems; i++) {
+                                        if (app.project.item(i).id == ${importedId}) { importedItem = app.project.item(i); break; }
+                                    }
+
+                                    var targetLayer = comp.layer(${tIdx});
+                                    if (!targetLayer) return "Error: Target not found";
 
                                     app.beginUndoGroup("Apply Smart Preset");
                                     undoStarted = true;
 
-                                    function applyD(s,t) {
-                                        try {
-                                            if(s.t===PropertyType.PROPERTY){
-                                                if(s.vt===PropertyValueType.NO_VALUE||s.vt===PropertyValueType.CUSTOM_VALUE) return;
-                                                if(s.k&&s.k.length>0){
-                                                    for(var i=0;i<s.k.length;i++){try{t.setValueAtTime(s.k[i].t,s.k[i].v);}catch(e){}}
-                                                    for(var i=0;i<s.k.length;i++){
-                                                        var ki=i+1,kd=s.k[i];
-                                                        try{if(kd.ii>=0)t.setInterpolationTypeAtKey(ki,kd.ii,kd.oi);}catch(e){}
-                                                        try{
-                                                            if(kd.ie){
-                                                                var ni=[],no=[];
-                                                                for(var j=0;j<kd.ie.length;j++){
-                                                                    ni.push(new KeyframeEase(kd.ie[j][0],kd.ie[j][1]));
-                                                                    no.push(new KeyframeEase(kd.oe[j][0],kd.oe[j][1]));
-                                                                }
-                                                                t.setTemporalEaseAtKey(ki,ni,no);
-                                                            }
-                                                        }catch(e){}
-                                                        try{if(kd.is)t.setSpatialTangentsAtKey(ki,kd.is,kd.os);}catch(e){}
-                                                    }
-                                                } else if(s.v!==null&&s.v!==undefined){
-                                                    try{t.setValue(s.v);}catch(e){}
-                                                }
-                                                try{if(s.xo&&s.x)t.expression=s.x;}catch(e){}
-                                            } else if(s.c&&s.c.length>0){
-                                                for(var i=0;i<s.c.length;i++){
-                                                    try{
-                                                        var cd=s.c[i],tc=null;
-                                                        try{tc=t.property(cd.n);}catch(e){}
-                                                        if(!tc){try{tc=t.property(i+1);}catch(e){}}
-                                                        if(tc) applyD(cd,tc);
-                                                    }catch(e){}
-                                                }
-                                            }
-                                        }catch(e){}
-                                    }
-
-                                    function isPos(n){return /Center|Position|Point|Anchor|Start|End|From|To/.test(n);}
-                                    function isSz(n){return /Width|Size|Thickness|Radius|Softness|Border|Intensity/.test(n);}
-
-                                    var cnt=0;
-                                    for(var L=0;L<layers.length;L++){
-                                        var ly=layers[L];
-                                        var te=ly.property("ADBE Effect Parade");
-                                        var rect=ly.sourceRectAtTime(comp.time,false);
-                                        var vW=(rect.width<1)?ly.width:rect.width;
-                                        var vH=(rect.height<1)?ly.height:rect.height;
-                                        var sR=((vW/srcW)+(vH/srcH))/2;
-
-                                        for(var e=0;e<effs.length;e++){
-                                            var ne=null;
-                                            try{ne=te.addProperty(effs[e].m);}catch(ex){continue;}
-                                            if(!ne)continue;
-                                            cnt++;
-                                            applyD(effs[e].d,ne);
-
-                                            for(var P=1;P<=ne.numProperties;P++){
-                                                try{
-                                                    var p=ne.property(P);
-                                                    if(!p)continue;
-                                                    if(p.propertyValueType===PropertyValueType.OneD&&isSz(p.name)){
-                                                        if(p.value>0)try{p.setValue(p.value*sR);}catch(ex){}
-                                                    }
-                                                    else if(p.propertyValueType===PropertyValueType.TwoD_SPATIAL&&isPos(p.name)){
-                                                        try{
-                                                            var ov=p.value,nx=ov[0]/srcW,ny=ov[1]/srcH;
-                                                            p.expression="var r=thisLayer.sourceRectAtTime(time,false);[r.left+r.width*"+nx+",r.top+r.height*"+ny+"]";
-                                                            var bv=p.valueAtTime(comp.time,false);
-                                                            p.expression="";p.setValue(bv);
-                                                        }catch(ex){}
-                                                    }
-                                                }catch(ex){}
-                                            }
+                                    // === PAPKA TASHKIL QILISH ===
+                                    // "darkPanel" papkasini topish yoki yaratish
+                                    var dpFolder = null;
+                                    for (var i = 1; i <= app.project.numItems; i++) {
+                                        var itm = app.project.item(i);
+                                        if (itm instanceof FolderItem && itm.name === "darkPanel") {
+                                            dpFolder = itm; break;
                                         }
                                     }
+                                    if (!dpFolder) {
+                                        dpFolder = app.project.items.addFolder("darkPanel");
+                                    }
+
+                                    // Import qilingan itemni papkaga ko'chirish
+                                    if (importedItem) {
+                                        importedItem.parentFolder = dpFolder;
+                                    }
+                                    // srcComp ham papkaga
+                                    try { srcComp.parentFolder = dpFolder; } catch(e){}
+
+                                    var isAdjustment = ${isAdj ? 'true' : 'false'};
+                                    var targetHasSource = ${hasSource ? 'true' : 'false'};
+
+                                    if (isAdjustment) {
+                                        // === ADJUSTMENT LAYER REJIMI ===
+                                        // srcComp ichidagi adjustment layerning effectlarini
+                                        // YANGI adjustment layer ga ko'chirish
+
+                                        // 1) Yangi adjustment layer yaratish
+                                        var adjLayer = comp.layers.addSolid(
+                                            [1,1,1], 
+                                            srcComp.name || "Effect", 
+                                            comp.width, comp.height, 1, 
+                                            comp.duration
+                                        );
+                                        adjLayer.adjustmentLayer = true;
+
+                                        // 2) srcComp ni PRECOMP o'rniga ADJUSTMENT sifatida qo'shish
+                                        // Aslida adjustment layer effect lari bilan ishlaydi
+                                        // Shuning uchun srcComp ni layer sifatida qo'shamiz
+                                        // va adjustment qilamiz
+                                        adjLayer.remove(); // solid ni o'chiramiz
+
+                                        // srcComp ni layer sifatida qo'shish
+                                        var newLayer = comp.layers.add(srcComp);
+                                        newLayer.adjustmentLayer = true;
+
+                                        // Timing
+                                        newLayer.startTime = targetLayer.startTime;
+                                        newLayer.inPoint = targetLayer.inPoint;
+                                        newLayer.outPoint = targetLayer.outPoint;
+
+                                        // Tanlangan layerning USTIGA qo'yish
+                                        var curIdx = targetLayer.index;
+                                        if (newLayer.index > curIdx) {
+                                            newLayer.moveBefore(comp.layer(curIdx));
+                                        } else if (newLayer.index < curIdx - 1) {
+                                            newLayer.moveAfter(comp.layer(curIdx - 1));
+                                        }
+
+                                        // Tanlash
+                                        for (var d = 1; d <= comp.numLayers; d++) comp.layer(d).selected = false;
+                                        newLayer.selected = true;
+                                        try { newLayer.name = srcComp.name; } catch(e){}
+                                        newLayer.collapseTransformation = true;
+
+                                    } else if (targetHasSource) {
+                                        // === NORMAL REJIM (replaceSource) ===
+                                        var srcLayer = srcComp.layer(1);
+                                        srcLayer.replaceSource(targetLayer.source, false);
+
+                                        // srcComp ni layer sifatida qo'shish
+                                        // SCALE QILMASLIK — faqat qo'shish
+                                        var newLayer = comp.layers.add(srcComp);
+
+                                        // Timing ko'chirish
+                                        newLayer.startTime = targetLayer.startTime;
+                                        newLayer.inPoint = targetLayer.inPoint;
+                                        newLayer.outPoint = targetLayer.outPoint;
+
+                                        // BARCHA TRANSFORM ko'chirish
+                                        try {
+                                            var sT = targetLayer.property("ADBE Transform Group");
+                                            var dT = newLayer.property("ADBE Transform Group");
+                                            var tProps = ["ADBE Position","ADBE Scale","ADBE Rotate Z","ADBE Opacity"];
+                                            // 3D layer bo'lsa qo'shimcha
+                                            try { if(targetLayer.threeDLayer) { tProps.push("ADBE Rotate X","ADBE Rotate Y"); newLayer.threeDLayer = true; } } catch(e){}
+                                            for (var pi = 0; pi < tProps.length; pi++) {
+                                                try {
+                                                    var sp = sT.property(tProps[pi]);
+                                                    var dp = dT.property(tProps[pi]);
+                                                    if (!sp || !dp) continue;
+                                                    if (sp.numKeys > 0) {
+                                                        for (var k = 1; k <= sp.numKeys; k++) {
+                                                            dp.setValueAtTime(sp.keyTime(k), sp.keyValue(k));
+                                                            try { dp.setInterpolationTypeAtKey(k, sp.keyInInterpolationType(k), sp.keyOutInterpolationType(k)); } catch(e){}
+                                                        }
+                                                    } else {
+                                                        dp.setValue(sp.value);
+                                                    }
+                                                    try { if(sp.expressionEnabled && sp.expression) dp.expression = sp.expression; } catch(e){}
+                                                } catch(e){}
+                                            }
+                                        } catch(e){}
+
+                                        // Layer tartibini to'g'rilash
+                                        var curIdx = targetLayer.index;
+                                        if (curIdx > 1) {
+                                            newLayer.moveAfter(comp.layer(curIdx));
+                                        }
+
+                                        // Eski layerni o'chirish
+                                        targetLayer.remove();
+
+                                        // Tanlash
+                                        for (var d = 1; d <= comp.numLayers; d++) comp.layer(d).selected = false;
+                                        newLayer.selected = true;
+                                        try { newLayer.name = srcComp.name; } catch(e){}
+                                        newLayer.collapseTransformation = true;
+
+                                    } else {
+                                        // === SOURCE YO'Q (text, shape, null, camera) ===
+                                        // srcComp ni oddiy layer sifatida qo'shish
+                                        var newLayer = comp.layers.add(srcComp);
+                                        newLayer.startTime = comp.time;
+
+                                        var curIdx = targetLayer.index;
+                                        if (newLayer.index !== curIdx) {
+                                            newLayer.moveBefore(comp.layer(curIdx));
+                                        }
+
+                                        for (var d = 1; d <= comp.numLayers; d++) comp.layer(d).selected = false;
+                                        newLayer.selected = true;
+                                        try { newLayer.name = srcComp.name; } catch(e){}
+                                        newLayer.collapseTransformation = true;
+                                    }
+
+                                    // Temp faylni o'chirish
+                                    try { var tf = new File("${escapedPath}"); tf.remove(); } catch(e){}
 
                                     app.endUndoGroup();
-                                    undoStarted=false;
-                                    $.global.__dpJSON=null;
-
-                                    if(cnt===0) return "Error: No effects added";
-                                    return "Success:"+cnt;
+                                    undoStarted = false;
+                                    return "Success";
                                 } catch(err) {
-                                    if(undoStarted){try{app.endUndoGroup();}catch(x){}}
-                                    return "Error: "+err.toString();
+                                    if (undoStarted) { try{app.endUndoGroup();}catch(x){} }
+                                    return "Error: " + err.toString();
                                 }
                             })()`;
 
-                            const r3 = await evalP(step3);
-                            console.log('[dp step3]', r3);
+                            const r2 = await evalP(step2);
+                            console.log('[dp step2]', r2);
 
-                            if (r3.indexOf('Success') !== -1) {
+                            if (r2.indexOf('Success') !== -1) {
                                 const lastAction = document.getElementById('dp-last-action');
                                 const lastTime = document.getElementById('dp-last-time');
                                 if (lastAction) lastAction.textContent = 'Effect Fitted';
@@ -1580,7 +1568,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                                     setTimeout(() => toast.remove(), 500);
                                 }, 1500);
                             } else {
-                                throw new Error(r3);
+                                throw new Error(r2);
                             }
                         } catch (stepErr) {
                             console.error('[dp error]', stepErr);
@@ -1596,7 +1584,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                                 setTimeout(() => toast.remove(), 500);
                             }, 2000);
                         }
-                        return; // AEP shu yerda tugaydi, FFX callback ga o'tmasin
+                        return;
                     } else {
                         // .FFX logic (Short & Safe)
                         applyScript = `(function(){ 
