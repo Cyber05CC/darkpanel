@@ -1031,3 +1031,12 @@ header,
 .preset-thumb img:-moz-loading {
     visibility: hidden;
 }
+
+.loading-placeholder {
+    position: absolute;
+    top: 2%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: var(--neon);
+    text-align: center;
+}

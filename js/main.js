@@ -959,8 +959,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         async function createPresets() {
             if (!presetList) return;
 
-            presetList.innerHTML =
-                '<div class="loading-placeholder" style="text-align:center;padding:2rem;color:#aaa">Loading presets...</div>';
+            presetList.innerHTML = `<div class="loading-placeholder">Loading presets...</div>`;
 
             let presetIndexes = [];
 
