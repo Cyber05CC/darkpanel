@@ -109,28 +109,16 @@ document.addEventListener('DOMContentLoaded', async function () {
             const src = img.dataset.src;
             if (!src) return;
 
-            // preset-img (webp footage) ni autoplay observer boshqaradi
-            // Lazy loader faqat static-thumb (PNG) larni yuklaydi
+            // preset-img ni autoplay observer boshqaradi
             if (img.classList.contains('preset-img')) return;
 
             img.src = src;
             img.classList.remove('lazy');
 
-            // Yuklanganda animatsiya
             img.onload = () => {
                 requestAnimationFrame(() => {
                     img.style.transition = 'opacity 0.3s ease';
                     img.style.opacity = '1';
-
-                    // Placeholder ni olib tashlash (faqat static thumb uchun)
-                    const placeholder = img.previousElementSibling;
-                    if (
-                        placeholder &&
-                        placeholder.classList.contains('image-placeholder') &&
-                        img.classList.contains('static-thumb')
-                    ) {
-                        placeholder.style.display = 'none';
-                    }
                 });
             };
         }
@@ -575,17 +563,10 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     function playPreview(img) {
         if (!img || !img.dataset.src) return;
-        if (autoplayingSet.has(img)) return; // allaqachon o'ynayapti
+        if (autoplayingSet.has(img)) return;
 
         img.src = img.dataset.src;
         img.style.opacity = '1';
-
-        const parent = img.closest('.preset-thumb');
-        if (parent) {
-            const png = parent.querySelector('.static-thumb');
-            if (png) png.style.opacity = '0';
-        }
-
         autoplayingSet.add(img);
     }
 
@@ -594,13 +575,6 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         img.removeAttribute('src');
         img.style.opacity = '0';
-
-        const parent = img.closest('.preset-thumb');
-        if (parent) {
-            const png = parent.querySelector('.static-thumb');
-            if (png) png.style.opacity = '1';
-        }
-
         autoplayingSet.delete(img);
     }
 
@@ -1006,12 +980,9 @@ document.addEventListener('DOMContentLoaded', async function () {
                 preset.dataset.file = fileName;
 
                 const footageSrc = `${GITHUB_RAW}/assets/videos/${currentPack}_${realNum}.webp`;
-                const thumbSrc = `${GITHUB_RAW}/assets/thumbnails/${currentPack}_${realNum}.png`;
 
                 preset.innerHTML = `
                     <div class="preset-thumb">
-                        <div class="image-placeholder"></div>
-                        <img class="static-thumb lazy" data-src="${thumbSrc}" alt="thumb" draggable="false" />
                         <img class="preset-img" data-src="${footageSrc}" alt="" draggable="false" />
                         <input type="checkbox" class="favorite-check" data-file="${fileName}">
                     </div>
@@ -1020,10 +991,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
                 presetList.appendChild(preset);
 
-                const staticImg = preset.querySelector('.static-thumb');
                 const footageImg = preset.querySelector('.preset-img');
-
-                if (staticImg) lazyImages.push(staticImg);
                 if (footageImg) lazyImages.push(footageImg);
 
                 uiCounter++;
