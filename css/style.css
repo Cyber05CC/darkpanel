@@ -1040,3 +1040,270 @@ header,
     color: var(--neon);
     text-align: center;
 }
+/* ================== OWNER PANEL — style.css OXIRIGA QO'SHING ================== */
+
+.owner-panel {
+    position: fixed;
+    inset: 0;
+    background: #0c0c12;
+    z-index: 9999999;
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(100%);
+    transition: all 0.38s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.owner-panel.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+.owner-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: rgba(16, 16, 24, 0.95);
+    border-bottom: 1px solid rgba(120, 139, 241, 0.2);
+    flex-shrink: 0;
+    backdrop-filter: blur(12px);
+}
+.owner-back-btn {
+    background: rgba(120, 139, 241, 0.12);
+    border: 1px solid rgba(120, 139, 241, 0.3);
+    color: #788bf1;
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: 'Poppins', sans-serif;
+}
+.owner-back-btn:hover {
+    background: #788bf1;
+    color: #fff;
+}
+.owner-title {
+    font-family: 'AKIRA', sans-serif;
+    font-size: 13px;
+    color: #f7f7f7;
+    letter-spacing: 1.5px;
+}
+
+/* PROFILE CONTENT */
+.owner-content {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 0 0 20px;
+}
+.owner-content::-webkit-scrollbar {
+    width: 3px;
+}
+.owner-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+.owner-content::-webkit-scrollbar-thumb {
+    background: #788bf1;
+    border-radius: 10px;
+}
+
+.owner-profile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 30px 20px 20px;
+    text-align: center;
+}
+
+/* AVATAR */
+.owner-avatar-glow {
+    position: relative;
+    margin-bottom: 16px;
+}
+.owner-avatar-glow::before {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
+    background: conic-gradient(from 0deg, #788bf1, #6b4ce6, #a855f7, #788bf1);
+    animation: ownerGlow 3s linear infinite;
+    filter: blur(2px);
+    opacity: 0.7;
+}
+@keyframes ownerGlow {
+    to {
+        transform: rotate(360deg);
+    }
+}
+.owner-avatar {
+    width: 90px;
+    height: 90px;
+    border-radius: 50%;
+    overflow: hidden;
+    position: relative;
+    background: #1a1a2e;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 3px solid #0c0c12;
+}
+.owner-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.owner-avatar-letter {
+    font-size: 36px;
+    font-weight: 700;
+    color: #788bf1;
+    font-family: 'AKIRA', sans-serif;
+}
+
+/* TEXT */
+.owner-name {
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0;
+    color: #f7f7f7;
+    font-family: 'Poppins', sans-serif;
+}
+.owner-role {
+    font-size: 12px;
+    color: #788bf1;
+    margin: 4px 0 0;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+}
+.owner-bio {
+    font-size: 12px;
+    color: #8a8aa0;
+    margin: 12px 0 0;
+    line-height: 1.5;
+    max-width: 280px;
+}
+
+/* SOCIAL LINKS */
+.owner-links {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+}
+.owner-link-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 18px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    color: #e0e0e0;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: 'Poppins', sans-serif;
+    transition: all 0.2s ease;
+}
+.owner-link-btn svg {
+    flex-shrink: 0;
+}
+.owner-link-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(120, 139, 241, 0.25);
+}
+.telegram-btn:hover {
+    background: #0088cc;
+    border-color: #0088cc;
+    color: #fff;
+}
+.telegram-btn:hover svg {
+    fill: #fff;
+}
+.instagram-btn:hover {
+    background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);
+    border-color: transparent;
+    color: #fff;
+}
+.instagram-btn:hover svg {
+    fill: #fff;
+}
+
+/* STATS */
+.owner-stats {
+    display: flex;
+    gap: 12px;
+    margin-top: 24px;
+    width: 100%;
+    max-width: 320px;
+}
+.owner-stat {
+    flex: 1;
+    background: rgba(120, 139, 241, 0.08);
+    border: 1px solid rgba(120, 139, 241, 0.15);
+    border-radius: 12px;
+    padding: 12px 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+.stat-num {
+    font-size: 18px;
+    font-weight: 700;
+    color: #788bf1;
+}
+.stat-label {
+    font-size: 10px;
+    color: #7a7a90;
+    letter-spacing: 0.3px;
+}
+
+/* FEATURES */
+.owner-features {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 20px;
+    width: 100%;
+    max-width: 320px;
+}
+.owner-feature {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+    font-size: 11px;
+    color: #b0b0c0;
+}
+.feature-icon {
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+/* DM BUTTON */
+.owner-dm {
+    margin-top: 20px;
+    width: 100%;
+    max-width: 320px;
+}
+.dm-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 12px;
+    background: linear-gradient(135deg, rgba(120, 139, 241, 0.15), rgba(107, 76, 230, 0.15));
+    border: 1px solid rgba(120, 139, 241, 0.3);
+    color: #c4ccff;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 12px;
+}
+.dm-btn:hover {
+    background: linear-gradient(135deg, #788bf1, #6b4ce6);
+    color: #fff;
+    border-color: transparent;
+}

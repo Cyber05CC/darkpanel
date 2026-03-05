@@ -959,7 +959,8 @@ document.addEventListener('DOMContentLoaded', async function () {
         async function createPresets() {
             if (!presetList) return;
 
-            presetList.innerHTML = `<div class="loading-placeholder">Loading presets...</div>`;
+            presetList.innerHTML =
+                '<div class="loading-placeholder" style="text-align:center;padding:2rem;color:#aaa">Loading presets...</div>';
 
             let presetIndexes = [];
 
@@ -1780,37 +1781,41 @@ document.addEventListener('DOMContentLoaded', async function () {
                 switchPack('effect');
             });
 
-            const copyBtn = document.getElementById('copyDeviceBtn');
+            const ownerBtn = document.getElementById('ownerBtn');
 
-            if (copyBtn) {
-                copyBtn.addEventListener('click', async () => {
-                    try {
-                        await navigator.clipboard.writeText(deviceId);
-
-                        copyBtn.textContent = 'Copied!';
-                        copyBtn.classList.add('copied');
-
-                        setTimeout(() => {
-                            copyBtn.textContent = 'Copy device ID';
-                            copyBtn.classList.remove('copied');
-                        }, 1200);
-                    } catch (e) {
-                        console.warn('Clipboard failed, fallback');
-
-                        const ta = document.createElement('textarea');
-                        ta.value = deviceId;
-                        document.body.appendChild(ta);
-                        ta.select();
-                        document.execCommand('copy');
-                        ta.remove();
-
-                        copyBtn.textContent = 'Copied!';
-                        setTimeout(() => {
-                            copyBtn.textContent = 'Copy device ID';
-                        }, 1200);
-                    }
+            if (ownerBtn) {
+                ownerBtn.addEventListener('click', () => {
+                    closeInfoModal();
+                    const ownerPanel = document.getElementById('dp-owner-panel');
+                    if (ownerPanel) ownerPanel.classList.add('show');
                 });
             }
+
+            // Owner panel Back tugmasi
+            const ownerBackBtn = document.getElementById('ownerBackBtn');
+            if (ownerBackBtn) {
+                ownerBackBtn.addEventListener('click', () => {
+                    const ownerPanel = document.getElementById('dp-owner-panel');
+                    if (ownerPanel) ownerPanel.classList.remove('show');
+                });
+            }
+
+            // Owner panel — tashqi linklar (default brauzerda ochish)
+            document.querySelectorAll('.owner-link-btn').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    const url = btn.dataset.url;
+                    if (!url) return;
+                    try {
+                        if (csInterface) {
+                            csInterface.openURLInDefaultBrowser(url);
+                        } else {
+                            window.open(url, '_blank');
+                        }
+                    } catch (e) {
+                        window.open(url, '_blank');
+                    }
+                });
+            });
 
             const checkUpdateBtn = document.getElementById('checkUpdateBtn');
 
