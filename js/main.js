@@ -1787,8 +1787,41 @@ document.addEventListener('DOMContentLoaded', async function () {
                 ownerBtn.addEventListener('click', () => {
                     closeInfoModal();
                     const ownerPanel = document.getElementById('dp-owner-panel');
-                    if (ownerPanel) ownerPanel.classList.add('show');
+                    if (ownerPanel) {
+                        ownerPanel.classList.add('show');
+                        // Real-time subscriber count olish
+                        fetchSubscriberCount();
+                    }
                 });
+            }
+
+            // Subscriber count fetch
+            async function fetchSubscriberCount() {
+                const el = document.getElementById('owner-sub-count');
+                if (!el) return;
+
+                try {
+                    el.textContent = '...';
+                    el.classList.add('loading');
+                    const res = await fetch(
+                        API_BASE.replace('/api', '') + '/api/telegram/subscribers',
+                        {
+                            cache: 'no-store',
+                        }
+                    );
+                    if (!res.ok) throw new Error('API error');
+                    const data = await res.json();
+                    el.classList.remove('loading');
+                    if (data.count) {
+                        el.textContent = data.count.toLocaleString();
+                    } else {
+                        el.textContent = '—';
+                    }
+                } catch (e) {
+                    console.warn('Subscriber count fetch failed:', e);
+                    el.classList.remove('loading');
+                    el.textContent = '—';
+                }
             }
 
             // Owner panel Back tugmasi
