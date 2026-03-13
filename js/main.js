@@ -553,28 +553,48 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     // activePreviewImg o'chirildi — autoplay observer boshqaradi
     let selectedPresetEl = null;
-    // 1. Play funksiyasini yangilaymiz
     // ========== AUTOPLAY PREVIEW SYSTEM ==========
-    // Faqat ekranda ko'rinadigan presetlar o'ynaydi (IntersectionObserver)
-    // Ko'rinmaydigan presetlar to'xtaydi — FPS tushmaslik uchun
+    // Toggle bilan boshqariladi — yoqilsa footage o'ynaydi, o'chirilsa to'xtaydi
 
+    let autoplayEnabled = localStorage.getItem('dp_autoplay') !== 'off'; // default: ON
     let autoplayObserver = null;
-    const autoplayingSet = new Set(); // hozir o'ynayotgan imglar
+    const autoplayingSet = new Set();
 
     function playPreview(img) {
+        if (!autoplayEnabled) return; // TOGGLE O'CHIRILGAN
         if (!img || !img.dataset.src) return;
         if (autoplayingSet.has(img)) return;
 
-        img.src = img.dataset.src;
-        img.style.opacity = '1';
         autoplayingSet.add(img);
+
+        // Rasm YUKLANGANIDAN KEYIN ko'rsatish
+        img.onload = () => {
+            img.style.opacity = '1';
+            // Shimmer ni yashirish
+            const placeholder = img.parentElement?.querySelector('.image-placeholder');
+            if (placeholder) placeholder.style.display = 'none';
+        };
+
+        img.src = img.dataset.src;
+        // Agar allaqachon cache da bo'lsa
+        if (img.complete && img.naturalWidth > 0) {
+            img.style.opacity = '1';
+            const placeholder = img.parentElement?.querySelector('.image-placeholder');
+            if (placeholder) placeholder.style.display = 'none';
+        }
     }
 
     function stopPreview(img) {
         if (!img) return;
 
+        img.onload = null;
         img.removeAttribute('src');
         img.style.opacity = '0';
+
+        // Shimmer ni qaytarish
+        const placeholder = img.parentElement?.querySelector('.image-placeholder');
+        if (placeholder) placeholder.style.display = '';
+
         autoplayingSet.delete(img);
     }
 
@@ -626,6 +646,76 @@ document.addEventListener('DOMContentLoaded', async function () {
                 autoplayObserver.observe(preset);
             }
         });
+    }
+
+    // FALLBACK: Observer ishlamasa, to'g'ridan-to'g'ri yuklash
+    function forceLoadVisiblePresets() {
+        const container = document.getElementById('presets-container');
+        if (!container) return;
+
+        const containerRect = container.getBoundingClientRect();
+
+        document.querySelectorAll('.preset').forEach((preset) => {
+            if (preset.style.display === 'none') return;
+
+            const rect = preset.getBoundingClientRect();
+            // Ekranda ko'rinadimi?
+            const isVisible = rect.bottom > containerRect.top && rect.top < containerRect.bottom;
+
+            if (isVisible) {
+                const img = preset.querySelector('.preset-img');
+                if (img && img.dataset.src && !img.src) {
+                    playPreview(img);
+                }
+            }
+        });
+    }
+
+    // ========== AUTOPLAY TOGGLE ==========
+    function toggleAutoplay() {
+        autoplayEnabled = !autoplayEnabled;
+        localStorage.setItem('dp_autoplay', autoplayEnabled ? 'on' : 'off');
+
+        // UI tugmasini yangilash
+        updateAutoplayBtn();
+
+        if (autoplayEnabled) {
+            // Yoqildi — ko'rinadigan presetlarni yuklash
+            observeVisiblePresets();
+            setTimeout(() => forceLoadVisiblePresets(), 100);
+        } else {
+            // O'chirildi — hammasini to'xtatish
+            stopAllPreviews();
+            if (autoplayObserver) autoplayObserver.disconnect();
+        }
+    }
+
+    function updateAutoplayBtn() {
+        const btn = document.getElementById('autoplayToggle');
+        if (!btn) return;
+        if (autoplayEnabled) {
+            btn.classList.add('active');
+            btn.title = 'Autoplay ON';
+        } else {
+            btn.classList.remove('active');
+            btn.title = 'Autoplay OFF';
+        }
+    }
+
+    // Tugmani yaratish (tabs ichiga)
+    function createAutoplayButton() {
+        const gridControl = document.querySelector('.grid-control');
+        if (!gridControl || document.getElementById('autoplayToggle')) return;
+
+        const btn = document.createElement('button');
+        btn.id = 'autoplayToggle';
+        btn.className = 'grid-btn autoplay-btn' + (autoplayEnabled ? ' active' : '');
+        btn.title = autoplayEnabled ? 'Autoplay ON' : 'Autoplay OFF';
+        btn.innerHTML = '▶';
+        btn.addEventListener('click', toggleAutoplay);
+
+        // Grid control dan oldin qo'yish
+        gridControl.parentElement.insertBefore(btn, gridControl);
     }
 
     let presets = [];
@@ -909,6 +999,7 @@ document.addEventListener('DOMContentLoaded', async function () {
             createPresets();
             setupEventListeners();
             setupGridControl();
+            createAutoplayButton();
             if (status) status.textContent = 'No items selected';
         }
 
@@ -983,6 +1074,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
                 preset.innerHTML = `
                     <div class="preset-thumb">
+                        <div class="image-placeholder"></div>
                         <img class="preset-img" data-src="${footageSrc}" alt="" draggable="false" />
                         <input type="checkbox" class="favorite-check" data-file="${fileName}">
                     </div>
@@ -1005,13 +1097,8 @@ document.addEventListener('DOMContentLoaded', async function () {
 
             presets = document.querySelectorAll('.preset');
             initializeFavorites();
-            showPage(1);
-
-            setTimeout(() => {
-                stopAllPreviews();
-                initPresetPreviews();
-                showPage(1);
-            }, 0);
+            initPresetPreviews(); // Observer AVVAL yaratiladi
+            showPage(1); // Keyin observe qilinadi
         }
         function initPresetPreviews() {
             const presets = document.querySelectorAll('.preset');
@@ -1122,8 +1209,14 @@ document.addEventListener('DOMContentLoaded', async function () {
             if (prevPageBtn) prevPageBtn.disabled = currentPage === 1;
             if (nextPageBtn) nextPageBtn.disabled = currentPage === totalPages;
 
-            // Autoplay: faqat ko'rinadigan presetlarni observe qilish
-            setTimeout(() => observeVisiblePresets(), 50);
+            // Autoplay: observe + force load fallback
+            setTimeout(() => {
+                observeVisiblePresets();
+                // Fallback: observer ishlamasa, 300ms keyin to'g'ridan-to'g'ri yuklash
+                requestAnimationFrame(() => {
+                    setTimeout(() => forceLoadVisiblePresets(), 300);
+                });
+            }, 50);
         }
 
         function setupPresetSelection() {

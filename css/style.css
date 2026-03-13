@@ -101,7 +101,7 @@ header,
     display: block;
     position: relative;
     padding-right: 4px;
-    margin-top: 5px;
+    /* margin-top: 5px; */
 }
 
 #presets-container.hidden {
@@ -1304,4 +1304,18 @@ header,
     background: linear-gradient(135deg, #788bf1, #6b4ce6);
     color: #fff;
     border-color: transparent;
+}
+/* AUTOPLAY TOGGLE */
+.autoplay-btn {
+    font-size: 10px !important;
+    padding: 2px 8px !important;
+    margin-right: 4px;
+    position: relative;
+    opacity: 0.5;
+}
+.autoplay-btn.active {
+    opacity: 1;
+    background: #788bf1;
+    color: #fff;
+    border-color: #788bf1;
 }
