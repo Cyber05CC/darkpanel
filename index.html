@@ -34,7 +34,35 @@
 
         <script src="./js/CSInterface.js"></script>
         <script src="./js/main.js"></script>
-        <script src="https://cdn.lordicon.com/lordicon.js"></script>
+        <!-- <script src="https://cdn.lordicon.com/lordicon.js"></script> -->
+        <script>
+            window.__dpGetCachedAsset = function (key, fallback) {
+                try {
+                    const cached = JSON.parse(localStorage.getItem('dp_cached_assets') || '{}');
+                    return cached && cached[key] ? cached[key] : fallback;
+                } catch (e) {
+                    return fallback;
+                }
+            };
+
+            (function () {
+                const fallback = 'https://cdn.lordicon.com/lordicon.js';
+                const src = window.__dpGetCachedAsset('lordiconJs', fallback);
+
+                const s = document.createElement('script');
+                s.src = src;
+
+                s.onerror = function () {
+                    if (src !== fallback) {
+                        const fb = document.createElement('script');
+                        fb.src = fallback;
+                        document.head.appendChild(fb);
+                    }
+                };
+
+                document.head.appendChild(s);
+            })();
+        </script>
     </head>
     <body>
         <div id="dp-info-modal" class="info-modal">
@@ -47,51 +75,55 @@
                     <div class="info-item">
                         <div class="item-left">
                             <lord-icon
-                                src="https://cdn.lordicon.com/jezazvlx.json"
+                                data-dp-asset="jezazvlxJson"
+                                data-dp-fallback="https://cdn.lordicon.com/jezazvlx.json"
                                 trigger="loop"
                                 state="loop-wave"
                                 colors="primary:#f7f7f7,secondary:#788bf1"
                                 class="dp-icon"
                             ></lord-icon>
-                            <span>Status:</span>
+                            <span>Status :</span>
                         </div>
                         <span id="modal-status" class="value-badge online">Online</span>
                     </div>
                     <div class="info-item">
                         <div class="item-left">
                             <lord-icon
-                                src="https://cdn.lordicon.com/rqqkvjqf.json"
+                                data-dp-asset="rqqkvjqfJson"
+                                data-dp-fallback="https://cdn.lordicon.com/rqqkvjqf.json"
                                 trigger="loop"
                                 colors="primary:#f7f7f7,secondary:#788bf1"
                                 class="dp-icon"
                             ></lord-icon>
-                            <span>Type:</span>
+                            <span>Type :</span>
                         </div>
                         <span id="modal-license-status" class="value-badge">Trial</span>
                     </div>
                     <div class="info-item">
                         <div class="item-left">
                             <lord-icon
-                                src="https://cdn.lordicon.com/warimioc.json"
+                                data-dp-asset="warimiocJson"
+                                data-dp-fallback="https://cdn.lordicon.com/warimioc.json"
                                 trigger="loop"
                                 state="loop-oscillate"
                                 colors="primary:#f7f7f7,secondary:#788bf1"
                                 class="dp-icon"
                             ></lord-icon>
-                            <span>Trial:</span>
+                            <span>Trial :</span>
                         </div>
                         <span id="modal-trial-days" class="value-badge">4</span>
                     </div>
                     <div class="info-item">
                         <div class="item-left">
                             <lord-icon
-                                src="https://cdn.lordicon.com/nfuackpv.json"
+                                data-dp-asset="nfuackpvJson"
+                                data-dp-fallback="https://cdn.lordicon.com/nfuackpv.json"
                                 trigger="loop"
                                 state="loop-spin"
                                 colors="primary:#f7f7f7,secondary:#788bf1"
                                 class="dp-icon"
                             ></lord-icon>
-                            <span>Current:</span>
+                            <span>Version :</span>
                         </div>
                         <span id="modal-version" class="value-badge">v1.0</span>
                     </div>
@@ -192,7 +224,8 @@
                     <div class="owner-avatar-glow">
                         <div class="owner-avatar">
                             <img
-                                src="https://raw.githubusercontent.com/Cyber05CC/darkpanel/a354e8da82662f88ec5f4e1c7a621fba0c24bf1e/main/assets/icon/owner_avatar.png"
+                                data-dp-asset="ownerAvatarPng"
+                                data-dp-fallback="https://raw.githubusercontent.com/Cyber05CC/darkpanel/a354e8da82662f88ec5f4e1c7a621fba0c24bf1e/main/assets/icon/owner_avatar.png"
                                 alt="Owner"
                                 onerror="
                                     this.style.display = 'none';
@@ -268,7 +301,8 @@
                         <button class="owner-link-btn dm-btn" data-url="https://t.me/darken_edit">
                             <span
                                 ><img
-                                    src="https://raw.githubusercontent.com/Cyber05CC/darkpanel/7b2e2124825e04e437cf98a6faea194649715be9/assets/icon/telegram.webp"
+                                    data-dp-asset="telegramWebp"
+                                    data-dp-fallback="https://raw.githubusercontent.com/Cyber05CC/darkpanel/7b2e2124825e04e437cf98a6faea194649715be9/assets/icon/telegram.webp"
                                     alt="message"
                                 />
                                 DM: @darken_edit</span
@@ -495,6 +529,24 @@
                 // autoplay bloklangan bo‘lsa, interaction’da start bo‘lsin
                 video.addEventListener('canplay', () => {
                     video.play().catch(() => {});
+                });
+            });
+        </script>
+
+        <script>
+            document.addEventListener('DOMContentLoaded', function () {
+                const getAsset = window.__dpGetCachedAsset || ((key, fallback) => fallback);
+
+                document.querySelectorAll('lord-icon[data-dp-asset]').forEach((el) => {
+                    const key = el.getAttribute('data-dp-asset');
+                    const fallback = el.getAttribute('data-dp-fallback') || '';
+                    el.setAttribute('src', getAsset(key, fallback));
+                });
+
+                document.querySelectorAll('img[data-dp-asset]').forEach((img) => {
+                    const key = img.getAttribute('data-dp-asset');
+                    const fallback = img.getAttribute('data-dp-fallback') || '';
+                    img.src = getAsset(key, fallback);
                 });
             });
         </script>

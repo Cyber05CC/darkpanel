@@ -152,6 +152,14 @@ document.addEventListener('DOMContentLoaded', async function () {
             'https://raw.githubusercontent.com/Cyber05CC/darkpanel/86a929382b407e7574501733d57645d5516e11d9/assets/icon/chumo1.png',
         chumo2Png:
             'https://raw.githubusercontent.com/Cyber05CC/darkpanel/86a929382b407e7574501733d57645d5516e11d9/assets/icon/chumo2.png',
+
+        lordiconJs: 'https://cdn.lordicon.com/lordicon.js',
+        jezazvlxJson: 'https://cdn.lordicon.com/jezazvlx.json',
+        rqqkvjqfJson: 'https://cdn.lordicon.com/rqqkvjqf.json',
+        warimiocJson: 'https://cdn.lordicon.com/warimioc.json',
+        nfuackpvJson: 'https://cdn.lordicon.com/nfuackpv.json',
+        telegramWebp:
+            'https://raw.githubusercontent.com/Cyber05CC/darkpanel/7b2e2124825e04e437cf98a6faea194649715be9/assets/icon/telegram.webp',
     };
 
     const ASSET_CACHE_VERSION = 'v2';
@@ -163,6 +171,13 @@ document.addEventListener('DOMContentLoaded', async function () {
         ownerAvatarPng: BOOT_ASSETS.ownerAvatarPng,
         chumo1Png: BOOT_ASSETS.chumo1Png,
         chumo2Png: BOOT_ASSETS.chumo2Png,
+
+        lordiconJs: BOOT_ASSETS.lordiconJs,
+        jezazvlxJson: BOOT_ASSETS.jezazvlxJson,
+        rqqkvjqfJson: BOOT_ASSETS.rqqkvjqfJson,
+        warimiocJson: BOOT_ASSETS.warimiocJson,
+        nfuackpvJson: BOOT_ASSETS.nfuackpvJson,
+        telegramWebp: BOOT_ASSETS.telegramWebp,
     };
 
     function normalizeSystemPath(path) {
@@ -415,6 +430,48 @@ document.addEventListener('DOMContentLoaded', async function () {
             BOOT_ASSETS.chumo2Png,
             'chumo2.png'
         );
+
+        DP_ASSETS.lordiconJs = await ensureCachedAsset(
+            'lordiconJs',
+            BOOT_ASSETS.lordiconJs,
+            'lordicon.js'
+        );
+
+        DP_ASSETS.jezazvlxJson = await ensureCachedAsset(
+            'jezazvlxJson',
+            BOOT_ASSETS.jezazvlxJson,
+            'jezazvlx.json'
+        );
+
+        DP_ASSETS.rqqkvjqfJson = await ensureCachedAsset(
+            'rqqkvjqfJson',
+            BOOT_ASSETS.rqqkvjqfJson,
+            'rqqkvjqf.json'
+        );
+
+        DP_ASSETS.warimiocJson = await ensureCachedAsset(
+            'warimiocJson',
+            BOOT_ASSETS.warimiocJson,
+            'warimioc.json'
+        );
+
+        DP_ASSETS.nfuackpvJson = await ensureCachedAsset(
+            'nfuackpvJson',
+            BOOT_ASSETS.nfuackpvJson,
+            'nfuackpv.json'
+        );
+
+        DP_ASSETS.telegramWebp = await ensureCachedAsset(
+            'telegramWebp',
+            BOOT_ASSETS.telegramWebp,
+            'telegram.webp'
+        );
+    }
+
+    try {
+        localStorage.setItem('dp_cached_assets', JSON.stringify(DP_ASSETS));
+    } catch (e) {
+        console.warn('dp_cached_assets save failed:', e);
     }
 
     function patchExistingStaticImgs() {
@@ -440,6 +497,9 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         document.querySelectorAll('#chumo-2').forEach((img) => {
             img.src = DP_ASSETS.chumo2Png;
+        });
+        document.querySelectorAll('.owner-dm img[alt="message"]').forEach((img) => {
+            img.src = DP_ASSETS.telegramWebp;
         });
     }
 
@@ -891,7 +951,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         versionBadge.textContent = 'v' + version;
         document.getElementById('modal-env').textContent = csInterface
-            ? 'After Effects (CEP)'
+            ? 'After Effects'
             : 'Browser';
 
         document.getElementById('modal-device').textContent = deviceId.slice(0, 10) + '…';
@@ -910,7 +970,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         const s = document.getElementById('modal-status');
         if (s) {
             s.textContent = 'Offline';
-            s.style.color = '#ff6f6f';
+            s.style.color = '#ff0000';
         }
     });
 
