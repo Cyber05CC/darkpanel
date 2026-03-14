@@ -1090,7 +1090,7 @@ document.addEventListener('DOMContentLoaded', async function () {
             if (!presetList) return;
 
             presetList.innerHTML =
-                '<div class="loading-placeholder" style="text-align:center;padding:2rem;color:#aaa">Loading presets...</div>';
+                '<div class="loading-placeholder" padding: 2rem;"><img src="./assets/icon/loading.webp" alt="loading" /></div>';
 
             let presetIndexes = [];
 
@@ -1263,6 +1263,21 @@ document.addEventListener('DOMContentLoaded', async function () {
             presets.forEach((p) => {
                 p.style.display = 'none';
             });
+
+            // PIN bo'limi bo'sh bo'lsa loading animatsiya ko'rsatish
+            const emptyState = document.getElementById('dp-empty-state');
+            if (emptyState) emptyState.remove();
+
+            if (filtered.length === 0) {
+                const empty = document.createElement('div');
+                empty.id = 'dp-empty-state';
+                empty.className = 'dp-empty-state';
+                empty.innerHTML = `
+                <img src="./assets/icon/loading.webp" alt="empty" class="empty-state-img" />
+                <p>${currentView === 'favorites' ? 'No pinned presets' : 'No presets found'}</p>`;
+                presetList.appendChild(empty);
+                return;
+            }
 
             // Show only current page
             const presetsToShow = filtered.slice((page - 1) * itemsPerPage, page * itemsPerPage);
