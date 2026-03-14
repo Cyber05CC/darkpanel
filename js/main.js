@@ -854,7 +854,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                 modal.className = 'dp-offline-modal';
                 modal.innerHTML = `
                     <div class="dp-offline-card">
-                        <img src="./assets/icon/loadingcha.webp" alt="offline" class="dp-offline-img" />
+                        <img src="./assets/icon/loadingcha.gif" alt="offline" class="dp-offline-img" />
                         <p class="dp-offline-text">No Internet Connection</p>
                     </div>
                 `;
