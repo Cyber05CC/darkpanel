@@ -162,7 +162,7 @@ document.addEventListener('DOMContentLoaded', async function () {
             'https://raw.githubusercontent.com/Cyber05CC/darkpanel/7b2e2124825e04e437cf98a6faea194649715be9/assets/icon/telegram.webp',
 
         introVideoMp4:
-            'https://github.com/Cyber05CC/darkpanel/raw/3c23197379d0491aa3bc541c931926b04b504f02/assets/intro/intro.mp4',
+            'https://github.com/Cyber05CC/darkpanel/raw/f3bdf4a8ef5e445d5994822d62bbef1875560329/assets/intro/intro.mp4',
         introSfxMp3:
             'https://github.com/Cyber05CC/darkpanel/raw/3c23197379d0491aa3bc541c931926b04b504f02/assets/intro/intro-sfx.mp3',
     };
@@ -610,7 +610,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
                 setTimeout(() => {
                     closeIntro();
-                }, 3200);
+                }, 7000);
             });
         });
     }
@@ -1099,22 +1099,34 @@ document.addEventListener('DOMContentLoaded', async function () {
     const autoplayingSet = new Set();
 
     function playPreview(img) {
+        const placeholder = img.parentElement?.querySelector('.image-placeholder');
+        if (placeholder) placeholder.style.display = '';
+
         if (!autoplayEnabled) return;
         if (!img || !img.dataset.src) return;
         if (autoplayingSet.has(img)) return;
 
         autoplayingSet.add(img);
 
+        img.style.visibility = 'visible';
+        img.style.opacity = '0';
+
         img.onload = () => {
+            img.style.visibility = 'visible';
             img.style.opacity = '1';
+
             const placeholder = img.parentElement?.querySelector('.image-placeholder');
             if (placeholder) placeholder.style.display = 'none';
         };
 
-        img.src = img.dataset.src;
+        if (img.getAttribute('src') !== img.dataset.src) {
+            img.src = img.dataset.src;
+        }
 
         if (img.complete && img.naturalWidth > 0) {
+            img.style.visibility = 'visible';
             img.style.opacity = '1';
+
             const placeholder = img.parentElement?.querySelector('.image-placeholder');
             if (placeholder) placeholder.style.display = 'none';
         }
@@ -1126,9 +1138,10 @@ document.addEventListener('DOMContentLoaded', async function () {
         img.onload = null;
         img.removeAttribute('src');
         img.style.opacity = '0';
+        img.style.visibility = 'hidden';
 
         const placeholder = img.parentElement?.querySelector('.image-placeholder');
-        if (placeholder) placeholder.style.display = '';
+        if (placeholder) placeholder.style.display = 'none';
 
         autoplayingSet.delete(img);
     }
