@@ -313,7 +313,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                             justify-content: center;
                         "
                     >
-                        <img class="activate-lock" src="./assets/icon/lock.webp" alt="lock" />
+                        <img class="activate-lock" src="https://raw.githubusercontent.com/Cyber05CC/darkpanel/03ea76a4a76680970d737fefe3a599e90e71cd3e/assets/icon/lock.webp" alt="lock" />
                     </div>
                     <h2 style="margin: 0; font-size: 18px; font-weight: 700">
                         darkPanel Activation
