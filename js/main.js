@@ -2132,7 +2132,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
                             const toast = document.createElement('div');
                             toast.className = 'apply-toast';
-                            toast.textContent = isAEP ? 'EFFECTS ADDED' : 'APPLIED';
+                            toast.textContent = isAEP ? 'EFFECTS ADDED' : 'Done';
                             document.body.appendChild(toast);
 
                             setTimeout(() => {
