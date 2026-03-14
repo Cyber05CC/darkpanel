@@ -1335,6 +1335,9 @@ header,
         width: 100px;
     }
     #chumo-2 {
-        border-radius: 8px 0;
+        border-radius: 5px 0;
     }
+}
+.niger {
+    font-family: cursive;
 }

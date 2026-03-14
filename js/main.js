@@ -292,7 +292,7 @@ document.addEventListener('DOMContentLoaded', async function () {
             font-family:Inter,system-ui,Arial,sans-serif;
         `;
         overlay.innerHTML = `
-            <div
+             <div
             style="
                 width: min(450px, 90vw);
                 border: 1px solid #2a2a2a;
@@ -313,7 +313,11 @@ document.addEventListener('DOMContentLoaded', async function () {
                             justify-content: center;
                         "
                     >
-                        <img class="activate-lock" src="https://raw.githubusercontent.com/Cyber05CC/darkpanel/03ea76a4a76680970d737fefe3a599e90e71cd3e/assets/icon/lock.webp" alt="lock" />
+                        <img
+                            class="activate-lock"
+                            src="https://raw.githubusercontent.com/Cyber05CC/darkpanel/03ea76a4a76680970d737fefe3a599e90e71cd3e/assets/icon/lock.webp"
+                            alt="lock"
+                        />
                     </div>
                     <h2 style="margin: 0; font-size: 18px; font-weight: 700">
                         darkPanel Activation
@@ -366,7 +370,12 @@ document.addEventListener('DOMContentLoaded', async function () {
                     src="https://raw.githubusercontent.com/Cyber05CC/darkpanel/86a929382b407e7574501733d57645d5516e11d9/assets/icon/chumo1.png"
                     alt="chumo1"
                 />
-                <img id="chumo-2" src="https://raw.githubusercontent.com/Cyber05CC/darkpanel/86a929382b407e7574501733d57645d5516e11d9/assets/icon/chumo2.png" alt="chumo2" />
+                <h1 class="niger">Wussap nigga</h1>
+                <img
+                    id="chumo-2"
+                    src="https://raw.githubusercontent.com/Cyber05CC/darkpanel/86a929382b407e7574501733d57645d5516e11d9/assets/icon/chumo2.png"
+                    alt="chumo2"
+                />
             </div>
         </div>
         `;
