@@ -292,27 +292,83 @@ document.addEventListener('DOMContentLoaded', async function () {
             font-family:Inter,system-ui,Arial,sans-serif;
         `;
         overlay.innerHTML = `
-            <div style="width:min(420px,90vw);padding:22px 20px;border:1px solid #2a2a2a;
-                border-radius:14px;background:linear-gradient(180deg,#141416,#0f0f10)">
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-                    <div style="width:32px;height:32px;border-radius:8px;background:#3537ff;
-                        display:flex;align-items:center;justify-content:center;">🔐</div>
-                    <h2 style="margin:0;font-size:18px;font-weight:700">darkPanel Activation</h2>
+            <div
+            style="
+                width: min(450px, 90vw);
+                border: 1px solid #2a2a2a;
+                border-radius: 14px;
+                background: linear-gradient(180deg, #141416, #0f0f10);
+            "
+        >
+            <div style="padding: 22px 20px" class="dalbayop">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px">
+                    <div
+                        style="
+                            width: 32px;
+                            height: 32px;
+                            border-radius: 8px;
+                            background: #3537ff;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                        "
+                    >
+                        <img class="activate-lock" src="./assets/icon/lock.webp" alt="lock" />
+                    </div>
+                    <h2 style="margin: 0; font-size: 18px; font-weight: 700">
+                        darkPanel Activation
+                    </h2>
                 </div>
-                <p style="margin:6px 0 14px;color:#bdbdbd;font-size:12px">Please enter your key.</p>
-                <input id="dp-key" placeholder="XXXX-XXXX-XXXX" spellcheck="false"
-                    style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid #2b2b2b;
-                    background:#131318;color:#eaeaea;outline:none;font-size:13px">
-                <div style="display:flex;gap:10px;margin-top:12px">
-                    <button id="dp-activate" style="flex:1;padding:10px 12px;border:0;
-                        border-radius:10px;background:#4a6cff;color:#fff;font-weight:600;cursor:pointer">
+                <p style="margin: 6px 0 14px; color: #bdbdbd; font-size: 12px">
+                    Please enter your key.
+                </p>
+                <input
+                    id="dp-key"
+                    placeholder="XXXX-XXXX-XXXX"
+                    spellcheck="false"
+                    style="
+                        width: 100%;
+                        padding: 10px 12px;
+                        border-radius: 10px;
+                        border: 1px solid #2b2b2b;
+                        background: #131318;
+                        color: #eaeaea;
+                        outline: none;
+                        font-size: 13px;
+                    "
+                />
+                <div style="display: flex; gap: 10px; margin-top: 12px">
+                    <button
+                        id="dp-activate"
+                        style="
+                            flex: 1;
+                            padding: 10px 12px;
+                            border: 0;
+                            border-radius: 10px;
+                            background: #4a6cff;
+                            color: #fff;
+                            font-weight: 600;
+                            cursor: pointer;
+                        "
+                    >
                         Activate
                     </button>
-                    <button id="dp-exit" style="padding:0px 0px;border:0px solid #2b2b2b;
-                        border-radius:10px;background:#16161a;color:#ddd;cursor:pointer"></button>
                 </div>
-                <div id="dp-msg" style="margin-top:10px;color:#9ca3af;font-size:12px;min-height:16px"></div>
+                <div
+                    id="dp-msg"
+                    style="margin-top: 10px; color: #9ca3af; font-size: 12px; min-height: 16px"
+                ></div>
             </div>
+            <div class="chumolar">
+                <img
+                    style="margin-top: 7.5px"
+                    id="chumo-1"
+                    src="./assets/icon/chumo1.png"
+                    alt="chumo1"
+                />
+                <img id="chumo-2" src="./assets/icon/chumo2.png" alt="chumo2" />
+            </div>
+        </div>
         `;
         document.body.appendChild(overlay);
 

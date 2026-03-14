@@ -9,6 +9,33 @@
         <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
         <script src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>
         <script src="https://cdn.tailwindcss.com"></script>
+        <script>
+            document.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                return false;
+            });
+
+            document.addEventListener('selectstart', (e) => {
+                e.preventDefault();
+                return false;
+            });
+
+            document.addEventListener('dragstart', (e) => {
+                e.preventDefault();
+                return false;
+            });
+
+            document.addEventListener('keydown', function (e) {
+                if (
+                    e.key === 'F12' ||
+                    (e.ctrlKey && e.shiftKey && e.key === 'I') ||
+                    (e.ctrlKey && e.key === 'U')
+                ) {
+                    e.preventDefault();
+                    return false;
+                }
+            });
+        </script>
         <style>
             @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap');
             @import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&family=Orbitron:wght@400..900&family=Roboto:ital,wght@0,100..900;1,100..900&family=Secular+One&display=swap');

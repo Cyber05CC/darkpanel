@@ -1319,3 +1319,22 @@ header,
     color: #fff;
     border-color: #788bf1;
 }
+/* --------------------------------------------------------- */
+
+.activate-lock {
+    width: 35px;
+    filter: invert(1);
+}
+
+.chumolar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    img {
+        width: 100px;
+    }
+    #chumo-2 {
+        border-radius: 8px 0;
+    }
+}
