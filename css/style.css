@@ -56,6 +56,13 @@ body {
         32px 32px;
 }
 
+body.dp-idle-active main,
+body.dp-idle-active header,
+body.dp-idle-active .container {
+    filter: blur(3px);
+    transition: filter 0.35s ease;
+}
+
 main {
     width: 100%;
     height: 100%;

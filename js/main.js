@@ -12,7 +12,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 document.addEventListener('DOMContentLoaded', async function () {
-    'use strict';
+    ('use strict');
 
     // ==================== SIMPLE PERFORMANCE MANAGER ====================
     class SimplePerformanceManager {
@@ -137,6 +137,15 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     let isSleeping = false;
     let lazyLoader = null;
+    let mediaUnlocked = false;
+
+    let idleTimer = null;
+    let idleOverlayEl = null;
+    let idleVideoEl = null;
+    let idleAudioEl = null;
+    let isIdleOverlayVisible = false;
+
+    const IDLE_TIMEOUT_MS = 600000; // 10 minut
 
     // ==================== OFFLINE ASSET CACHE ====================
     const BOOT_ASSETS = {
@@ -165,6 +174,12 @@ document.addEventListener('DOMContentLoaded', async function () {
             'https://github.com/Cyber05CC/darkpanel/raw/f3bdf4a8ef5e445d5994822d62bbef1875560329/assets/intro/intro.mp4',
         introSfxMp3:
             'https://github.com/Cyber05CC/darkpanel/raw/3c23197379d0491aa3bc541c931926b04b504f02/assets/intro/intro-sfx.mp3',
+
+        idleVideoMp4:
+            'https://raw.githubusercontent.com/Cyber05CC/darkpanel/ce2450b38c4bcbf3e4ec3d5bce1570c9b9ba13be/assets/iddle/idle.mp4',
+
+        idleSfxMp3:
+            'https://raw.githubusercontent.com/Cyber05CC/darkpanel/ce2450b38c4bcbf3e4ec3d5bce1570c9b9ba13be/assets/iddle/idle-sfx.mp3',
     };
 
     const ASSET_CACHE_VERSION = 'v2';
@@ -186,6 +201,9 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         introVideoMp4: BOOT_ASSETS.introVideoMp4,
         introSfxMp3: BOOT_ASSETS.introSfxMp3,
+
+        idleVideoMp4: BOOT_ASSETS.idleVideoMp4,
+        idleSfxMp3: BOOT_ASSETS.idleSfxMp3,
     };
 
     function normalizeSystemPath(path) {
@@ -486,6 +504,18 @@ document.addEventListener('DOMContentLoaded', async function () {
             BOOT_ASSETS.introSfxMp3,
             'intro-sfx.mp3'
         );
+
+        DP_ASSETS.idleVideoMp4 = await ensureCachedAsset(
+            'idleVideoMp4',
+            BOOT_ASSETS.idleVideoMp4,
+            'idle.mp4'
+        );
+
+        DP_ASSETS.idleSfxMp3 = await ensureCachedAsset(
+            'idleSfxMp3',
+            BOOT_ASSETS.idleSfxMp3,
+            'idle-sfx.mp3'
+        );
     }
 
     try {
@@ -521,6 +551,237 @@ document.addEventListener('DOMContentLoaded', async function () {
         document.querySelectorAll('.owner-dm img[alt="message"]').forEach((img) => {
             img.src = DP_ASSETS.telegramWebp;
         });
+    }
+
+    async function unlockMediaPlayback() {
+        if (mediaUnlocked) return true;
+
+        try {
+            // overlay elementlari hali yaratilmagan bo‘lsa yaratamiz
+            if (!idleOverlayEl || !idleVideoEl || !idleAudioEl) {
+                createIdleOverlay();
+            }
+
+            // video unlock
+            idleVideoEl.muted = true;
+            idleVideoEl.currentTime = 0;
+            await idleVideoEl.play();
+            idleVideoEl.pause();
+            idleVideoEl.currentTime = 0;
+
+            // audio unlock
+            idleAudioEl.volume = 0.01;
+            idleAudioEl.currentTime = 0;
+            await idleAudioEl.play();
+            idleAudioEl.pause();
+            idleAudioEl.currentTime = 0;
+            idleAudioEl.volume = 1;
+
+            mediaUnlocked = true;
+            console.log('🔓 Media unlocked: SUCCESS');
+            return true;
+        } catch (e) {
+            mediaUnlocked = false;
+            console.warn('🔒 Media unlock failed:', e);
+            return false;
+        }
+    }
+
+    function createIdleOverlay() {
+        if (idleOverlayEl) return idleOverlayEl;
+
+        idleOverlayEl = document.createElement('div');
+        idleOverlayEl.id = 'dp-idle-overlay';
+        idleOverlayEl.style.cssText = `
+        position: fixed;
+        inset: 0;
+        z-index: 1000002;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(7, 7, 10, 0.40);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.35s ease, visibility 0.35s ease;
+        cursor: pointer;
+    `;
+
+        const inner = document.createElement('div');
+        inner.style.cssText = `
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 10px;
+        pointer-events: none;
+    `;
+
+        idleVideoEl = document.createElement('video');
+        idleVideoEl.src = DP_ASSETS.idleVideoMp4;
+        idleVideoEl.preload = 'auto';
+        idleVideoEl.loop = true;
+        idleVideoEl.playsInline = true;
+        idleVideoEl.autoplay = false;
+        idleVideoEl.muted = true;
+
+        idleVideoEl.controls = false;
+        idleVideoEl.style.cssText = `
+        width: min(360px, 74vw);
+        max-height: 72vh;
+        object-fit: contain;
+        border-radius: 18px;
+        box-shadow: 0 18px 60px rgba(0,0,0,0.42);
+        opacity: 0;
+        transform: scale(0.94);
+        transition: opacity 0.35s ease, transform 0.35s ease;
+        background: transparent;
+        pointer-events: none;
+    `;
+
+        const hint = document.createElement('div');
+        hint.textContent = 'Go to Work';
+        hint.style.cssText = `
+        color: rgba(255,255,255,0.78);
+        font: 600 13px/1.2 cursive, sans-serif;
+        letter-spacing: 0.2px;
+        opacity: 0.95;
+        text-align: center;
+        text-shadow: 0 1px 6px rgba(0,0,0,0.35);
+        pointer-events: none;
+    `;
+
+        idleAudioEl = document.createElement('audio');
+        idleAudioEl.src = DP_ASSETS.idleSfxMp3;
+        idleAudioEl.preload = 'auto';
+        idleAudioEl.loop = true;
+        idleAudioEl.volume = 1;
+
+        inner.appendChild(idleVideoEl);
+        inner.appendChild(hint);
+        idleOverlayEl.appendChild(inner);
+
+        idleOverlayEl.addEventListener('mousedown', hideIdleOverlay);
+        idleOverlayEl.addEventListener('click', hideIdleOverlay);
+
+        document.body.appendChild(idleOverlayEl);
+        return idleOverlayEl;
+    }
+
+    function showIdleOverlay() {
+        if (isIdleOverlayVisible) return;
+        if (document.hidden) return;
+
+        const infoModal = document.getElementById('dp-info-modal');
+        if (infoModal && infoModal.classList.contains('show')) return;
+
+        const ownerPanel = document.getElementById('dp-owner-panel');
+        if (ownerPanel && ownerPanel.classList.contains('show')) return;
+
+        createIdleOverlay();
+        isIdleOverlayVisible = true;
+
+        document.body.classList.add('dp-idle-active');
+
+        idleOverlayEl.style.visibility = 'visible';
+        requestAnimationFrame(() => {
+            idleOverlayEl.style.opacity = '1';
+            idleVideoEl.style.opacity = '1';
+            idleVideoEl.style.transform = 'scale(1)';
+        });
+
+        try {
+            idleVideoEl.currentTime = 0;
+        } catch (_) {}
+
+        try {
+            idleAudioEl.currentTime = 0;
+        } catch (_) {}
+
+        idleVideoEl.play().catch((e) => {
+            console.warn('Idle video autoplay blocked:', e);
+        });
+
+        if (mediaUnlocked) {
+            idleAudioEl.volume = 1;
+            idleAudioEl.play().catch((e) => {
+                console.warn('Idle audio autoplay blocked:', e);
+            });
+        } else {
+            console.warn('Idle audio skipped: media not unlocked yet');
+        }
+    }
+
+    function hideIdleOverlay() {
+        if (!isIdleOverlayVisible || !idleOverlayEl) return;
+
+        isIdleOverlayVisible = false;
+        document.body.classList.remove('dp-idle-active');
+
+        idleOverlayEl.style.opacity = '0';
+        idleOverlayEl.style.visibility = 'hidden';
+
+        if (idleVideoEl) {
+            idleVideoEl.style.opacity = '0';
+            idleVideoEl.style.transform = 'scale(0.96)';
+            try {
+                idleVideoEl.pause();
+            } catch (_) {}
+        }
+
+        if (idleAudioEl) {
+            try {
+                idleAudioEl.pause();
+            } catch (_) {}
+        }
+
+        resetIdleTimer();
+    }
+
+    function resetIdleTimer() {
+        if (idleTimer) clearTimeout(idleTimer);
+
+        if (isIdleOverlayVisible) return;
+
+        idleTimer = setTimeout(() => {
+            showIdleOverlay();
+        }, IDLE_TIMEOUT_MS);
+    }
+
+    function initIdleOverlaySystem() {
+        createIdleOverlay();
+
+        const activityEvents = [
+            'mousemove',
+            'mousedown',
+            'keydown',
+            'wheel',
+            'touchstart',
+            'focus',
+        ];
+
+        activityEvents.forEach((eventName) => {
+            window.addEventListener(
+                eventName,
+                () => {
+                    if (isIdleOverlayVisible) return;
+                    resetIdleTimer();
+                },
+                { passive: true }
+            );
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                if (idleTimer) clearTimeout(idleTimer);
+                hideIdleOverlay();
+            } else {
+                resetIdleTimer();
+            }
+        });
+
+        resetIdleTimer();
     }
 
     async function playIntroOverlay() {
@@ -616,6 +877,9 @@ document.addEventListener('DOMContentLoaded', async function () {
     }
 
     function goSleep() {
+        hideIdleOverlay();
+        if (idleTimer) clearTimeout(idleTimer);
+
         if (isSleeping) return;
 
         const infoModal = document.getElementById('dp-info-modal');
@@ -629,6 +893,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         if (!isSleeping) return;
         isSleeping = false;
         document.body.classList.remove('dp-sleep');
+        resetIdleTimer();
     }
 
     document.addEventListener('visibilitychange', () => {
@@ -1308,6 +1573,22 @@ document.addEventListener('DOMContentLoaded', async function () {
         init();
         setupPackDropdown();
         setupTabsUnderline();
+
+        initIdleOverlaySystem();
+
+        const unlockOnce = async () => {
+            const ok = await unlockMediaPlayback();
+
+            if (ok) {
+                window.removeEventListener('mousedown', unlockOnce, true);
+                window.removeEventListener('keydown', unlockOnce, true);
+                window.removeEventListener('touchstart', unlockOnce, true);
+            }
+        };
+
+        window.addEventListener('mousedown', unlockOnce, true);
+        window.addEventListener('keydown', unlockOnce, true);
+        window.addEventListener('touchstart', unlockOnce, true);
 
         const presetsContainer = document.getElementById('presetList');
         if (presetsContainer) {
