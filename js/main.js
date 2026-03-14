@@ -846,36 +846,56 @@ document.addEventListener('DOMContentLoaded', async function () {
         }
 
         function setupConnectionWatcher() {
-            function showConnectionAlert(message, type = 'error') {
-                const existing = document.querySelector('.net-alert');
-                if (existing) existing.remove();
+            function showOfflineModal() {
+                if (document.getElementById('dp-offline-modal')) return;
 
-                const alert = document.createElement('div');
-                alert.className = `net-alert ${type}`;
-                alert.innerHTML = `<span>${type === 'error' ? '📡' : '🌐'} ${message}</span>`;
-                document.body.appendChild(alert);
+                const modal = document.createElement('div');
+                modal.id = 'dp-offline-modal';
+                modal.className = 'dp-offline-modal';
+                modal.innerHTML = `
+                    <div class="dp-offline-card">
+                        <img src="./assets/icon/loadingcha.webp" alt="offline" class="dp-offline-img" />
+                        <p class="dp-offline-text">No Internet Connection</p>
+                    </div>
+                `;
+                document.body.appendChild(modal);
 
-                requestAnimationFrame(() => alert.classList.add('visible'));
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        modal.classList.add('show');
+                    });
+                });
+            }
 
-                setTimeout(
+            function hideOfflineModal() {
+                const modal = document.getElementById('dp-offline-modal');
+                if (!modal) return;
+
+                modal.classList.remove('show');
+                modal.addEventListener(
+                    'transitionend',
                     () => {
-                        alert.classList.remove('visible');
-                        setTimeout(() => alert.remove(), 400);
+                        modal.remove();
                     },
-                    type === 'error' ? 3500 : 1800
+                    { once: true }
                 );
+
+                // Fallback — transition ishlamasa
+                setTimeout(() => {
+                    if (modal.parentElement) modal.remove();
+                }, 600);
             }
 
             window.addEventListener('offline', () => {
-                showConnectionAlert('Offline.', 'error');
+                showOfflineModal();
             });
 
             window.addEventListener('online', () => {
-                showConnectionAlert('Online', 'success');
-                setTimeout(() => location.reload(true), 1000);
+                hideOfflineModal();
+                setTimeout(() => location.reload(true), 800);
             });
 
-            if (!navigator.onLine) showConnectionAlert('Offline.', 'error');
+            if (!navigator.onLine) showOfflineModal();
         }
 
         function isNewerVersion(remote, local) {
@@ -1090,7 +1110,7 @@ document.addEventListener('DOMContentLoaded', async function () {
             if (!presetList) return;
 
             presetList.innerHTML =
-                '<div class="loading-placeholder" padding: 2rem;"><img src="./assets/icon/loading.webp" alt="loading" /></div>';
+                '<div class="loading-placeholder" padding: 2rem;"><img src="./assets/icon/loadingcha.webp" alt="loading" /></div>';
 
             let presetIndexes = [];
 
@@ -1273,7 +1293,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                 empty.id = 'dp-empty-state';
                 empty.className = 'dp-empty-state';
                 empty.innerHTML = `
-                <img src="./assets/icon/loading.webp" alt="empty" class="empty-state-img" />
+                <img src="https://raw.githubusercontent.com/Cyber05CC/darkpanel/a0da100633f7eb4a0b0335138f864ab7bc77d566/assets/icon/loading.webp" alt="empty" class="empty-state-img" />
                 <p>${currentView === 'favorites' ? 'No pinned presets' : 'No presets found'}</p>`;
                 presetList.appendChild(empty);
                 return;
