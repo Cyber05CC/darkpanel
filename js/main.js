@@ -363,10 +363,10 @@ document.addEventListener('DOMContentLoaded', async function () {
                 <img
                     style="margin-top: 7.5px"
                     id="chumo-1"
-                    src="./assets/icon/chumo1.png"
+                    src="https://raw.githubusercontent.com/Cyber05CC/darkpanel/86a929382b407e7574501733d57645d5516e11d9/assets/icon/chumo1.png"
                     alt="chumo1"
                 />
-                <img id="chumo-2" src="./assets/icon/chumo2.png" alt="chumo2" />
+                <img id="chumo-2" src="https://raw.githubusercontent.com/Cyber05CC/darkpanel/86a929382b407e7574501733d57645d5516e11d9/assets/icon/chumo2.png" alt="chumo2" />
             </div>
         </div>
         `;
