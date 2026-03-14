@@ -22,7 +22,6 @@ document.addEventListener('DOMContentLoaded', async function () {
             this.frameCount = 0;
             this.lowFPSThreshold = 45;
             this.performanceMode = false;
-
             this.init();
         }
 
@@ -37,13 +36,9 @@ document.addEventListener('DOMContentLoaded', async function () {
                 if (currentTime - this.lastTime >= 1000) {
                     this.fps = Math.round((this.frameCount * 1000) / (currentTime - this.lastTime));
 
-                    // Update UI FPS counter
                     const fpsEl = document.getElementById('dp-fps');
-                    if (fpsEl) {
-                        fpsEl.textContent = this.fps;
-                    }
+                    if (fpsEl) fpsEl.textContent = this.fps;
 
-                    // Dynamic performance adjustment
                     if (this.fps < this.lowFPSThreshold && !this.performanceMode) {
                         this.enablePerformanceMode();
                     } else if (this.fps > 55 && this.performanceMode) {
@@ -62,7 +57,6 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         enablePerformanceMode() {
             if (this.performanceMode) return;
-
             this.performanceMode = true;
             document.body.classList.add('performance-mode');
             console.log('🔧 Performance mode enabled - FPS:', this.fps);
@@ -70,13 +64,11 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         disablePerformanceMode() {
             if (!this.performanceMode) return;
-
             this.performanceMode = false;
             document.body.classList.remove('performance-mode');
         }
     }
 
-    // Initialize performance manager
     const perfManager = new SimplePerformanceManager();
 
     // ==================== IMPROVED LAZY LOADER ====================
@@ -87,11 +79,10 @@ document.addEventListener('DOMContentLoaded', async function () {
         }
 
         init() {
-            // Ko'proq elementlarni oldindan yuklash uchun kattaroq margin
             const options = {
                 root: null,
-                rootMargin: '300px 0px', // 300px oldindan yuklash
-                threshold: 0.1, // 10% ko'rinsa yuklash
+                rootMargin: '300px 0px',
+                threshold: 0.1,
             };
 
             this.observer = new IntersectionObserver((entries) => {
@@ -109,7 +100,6 @@ document.addEventListener('DOMContentLoaded', async function () {
             const src = img.dataset.src;
             if (!src) return;
 
-            // preset-img ni autoplay observer boshqaradi
             if (img.classList.contains('preset-img')) return;
 
             img.src = src;
@@ -124,9 +114,8 @@ document.addEventListener('DOMContentLoaded', async function () {
         }
 
         observe(images) {
-            images.forEach((img) => {
-                // Birinchi 4 ta rasmni darhol yuklash
-                if (images.indexOf(img) < 4) {
+            images.forEach((img, index) => {
+                if (index < 4) {
                     this.loadImage(img);
                 } else {
                     this.observer.observe(img);
@@ -148,6 +137,311 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     let isSleeping = false;
     let lazyLoader = null;
+
+    // ==================== OFFLINE ASSET CACHE ====================
+    const BOOT_ASSETS = {
+        loadingGif:
+            'https://raw.githubusercontent.com/Cyber05CC/darkpanel/a0da100633f7eb4a0b0335138f864ab7bc77d566/assets/icon/loading.gif',
+        loadingchaGif:
+            'https://raw.githubusercontent.com/Cyber05CC/darkpanel/60483a657710b9eea363040df42fee945ef75a1c/assets/icon/loadingcha.gif',
+        lockWebp:
+            'https://raw.githubusercontent.com/Cyber05CC/darkpanel/03ea76a4a76680970d737fefe3a599e90e71cd3e/assets/icon/lock.webp',
+        ownerAvatarPng:
+            'https://raw.githubusercontent.com/Cyber05CC/darkpanel/a354e8da82662f88ec5f4e1c7a621fba0c24bf1e/main/assets/icon/owner_avatar.png',
+        chumo1Png:
+            'https://raw.githubusercontent.com/Cyber05CC/darkpanel/86a929382b407e7574501733d57645d5516e11d9/assets/icon/chumo1.png',
+        chumo2Png:
+            'https://raw.githubusercontent.com/Cyber05CC/darkpanel/86a929382b407e7574501733d57645d5516e11d9/assets/icon/chumo2.png',
+    };
+
+    const ASSET_CACHE_VERSION = 'v2';
+
+    let DP_ASSETS = {
+        loadingGif: BOOT_ASSETS.loadingGif,
+        loadingchaGif: BOOT_ASSETS.loadingchaGif,
+        lockWebp: BOOT_ASSETS.lockWebp,
+        ownerAvatarPng: BOOT_ASSETS.ownerAvatarPng,
+        chumo1Png: BOOT_ASSETS.chumo1Png,
+        chumo2Png: BOOT_ASSETS.chumo2Png,
+    };
+
+    function normalizeSystemPath(path) {
+        if (!path) return '';
+        let p = decodeURI(String(path));
+
+        if (p.indexOf('file:///') === 0) {
+            p = p.replace('file:///', '');
+            if (!/^[A-Za-z]:/.test(p)) p = '/' + p;
+        } else if (p.indexOf('file://') === 0) {
+            p = p.replace('file://', '');
+        }
+
+        return p;
+    }
+
+    function escES(str) {
+        return String(str)
+            .replace(/\\/g, '\\\\')
+            .replace(/"/g, '\\"')
+            .replace(/\r/g, '\\r')
+            .replace(/\n/g, '\\n');
+    }
+
+    function evalES(script) {
+        return new Promise((resolve) => {
+            if (!csInterface) return resolve('');
+            csInterface.evalScript(script, resolve);
+        });
+    }
+
+    function bytesToBase64(uint8) {
+        let binary = '';
+        const chunkSize = 0x8000;
+
+        for (let i = 0; i < uint8.length; i += chunkSize) {
+            binary += String.fromCharCode.apply(null, uint8.subarray(i, i + chunkSize));
+        }
+
+        return btoa(binary);
+    }
+
+    function absPathToFileUrl(absPath) {
+        let p = String(absPath).replace(/\\/g, '/');
+        if (!p.startsWith('/')) p = '/' + p;
+        return encodeURI('file://' + p);
+    }
+
+    async function getAssetCacheDir() {
+        if (!csInterface) return null;
+
+        let base = csInterface.getSystemPath(SystemPath.USER_DATA);
+        base = normalizeSystemPath(base);
+
+        const isWin = /win/i.test(navigator.platform || '');
+        if (isWin) base = base.replace(/\//g, '\\');
+
+        const sep = isWin ? '\\' : '/';
+        return base + sep + 'darkPanelAssets' + sep + ASSET_CACHE_VERSION;
+    }
+
+    async function ensureFolderExists(absDir) {
+        const script = `
+            (function () {
+                try {
+                    function ensureFolder(path) {
+                        var normalized = path.replace(/\\\\/g, "/");
+                        var parts = normalized.split("/");
+                        var acc = parts.shift();
+
+                        if (acc === "") acc = "/";
+
+                        while (parts.length) {
+                            var part = parts.shift();
+                            if (!part) continue;
+
+                            if (acc === "/") acc += part;
+                            else acc += "/" + part;
+
+                            var f = new Folder(acc);
+                            if (!f.exists) {
+                                if (!f.create()) return "ERR:create_failed:" + acc;
+                            }
+                        }
+
+                        return "OK";
+                    }
+
+                    return ensureFolder("${escES(absDir)}");
+                } catch (e) {
+                    return "ERR:" + e.toString();
+                }
+            })();
+        `;
+
+        const res = await evalES(script);
+        return String(res).indexOf('OK') === 0;
+    }
+
+    async function fileExists(absPath) {
+        const script = `
+            (function () {
+                try {
+                    var f = new File("${escES(absPath)}");
+                    return f.exists ? "1" : "0";
+                } catch (e) {
+                    return "0";
+                }
+            })();
+        `;
+        return (await evalES(script)) === '1';
+    }
+
+    async function writeBase64Binary(absPath, base64) {
+        const CHUNK = 24000;
+
+        const openScript = `
+            (function () {
+                try {
+                    var f = new File("${escES(absPath)}");
+                    f.encoding = "BINARY";
+                    f.open("w");
+                    f.close();
+                    return "OK";
+                } catch (e) {
+                    return "ERR:" + e.toString();
+                }
+            })();
+        `;
+
+        const opened = await evalES(openScript);
+        if (String(opened).indexOf('OK') !== 0) return false;
+
+        for (let i = 0; i < base64.length; i += CHUNK) {
+            const part = base64.slice(i, i + CHUNK);
+
+            const appendScript = `
+                (function () {
+                    try {
+                        function b64d(s) {
+                            var k = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
+                            var out = "";
+                            var bits = 0, bitCount = 0, c, val;
+
+                            for (var i = 0; i < s.length; i++) {
+                                c = s.charAt(i);
+                                if (c === '=') break;
+                                val = k.indexOf(c);
+                                if (val < 0) continue;
+                                bits = (bits << 6) | val;
+                                bitCount += 6;
+
+                                if (bitCount >= 8) {
+                                    bitCount -= 8;
+                                    out += String.fromCharCode((bits >> bitCount) & 0xFF);
+                                }
+                            }
+
+                            return out;
+                        }
+
+                        var f = new File("${escES(absPath)}");
+                        f.encoding = "BINARY";
+                        f.open("a");
+                        f.write(b64d("${part}"));
+                        f.close();
+                        return "OK";
+                    } catch (e) {
+                        return "ERR:" + e.toString();
+                    }
+                })();
+            `;
+
+            const res = await evalES(appendScript);
+            if (String(res).indexOf('OK') !== 0) return false;
+        }
+
+        return true;
+    }
+
+    async function ensureCachedAsset(key, remoteUrl, localFileName) {
+        try {
+            const cacheDir = await getAssetCacheDir();
+            if (!cacheDir) return remoteUrl;
+
+            const isWin = /win/i.test(navigator.platform || '');
+            const sep = isWin ? '\\' : '/';
+            const absPath = cacheDir + sep + localFileName;
+
+            const okDir = await ensureFolderExists(cacheDir);
+            if (!okDir) return remoteUrl;
+
+            if (await fileExists(absPath)) {
+                return absPathToFileUrl(absPath);
+            }
+
+            if (!navigator.onLine) {
+                return remoteUrl;
+            }
+
+            const res = await fetch(remoteUrl, { cache: 'no-store' });
+            if (!res.ok) throw new Error('Download failed: ' + remoteUrl);
+
+            const buffer = await res.arrayBuffer();
+            const base64 = bytesToBase64(new Uint8Array(buffer));
+
+            const wrote = await writeBase64Binary(absPath, base64);
+            if (!wrote) return remoteUrl;
+
+            if (await fileExists(absPath)) {
+                return absPathToFileUrl(absPath);
+            }
+
+            return remoteUrl;
+        } catch (e) {
+            console.warn('Asset cache error:', key, e);
+            return remoteUrl;
+        }
+    }
+
+    async function bootstrapLocalAssets() {
+        DP_ASSETS.loadingGif = await ensureCachedAsset(
+            'loadingGif',
+            BOOT_ASSETS.loadingGif,
+            'loading.gif'
+        );
+
+        DP_ASSETS.loadingchaGif = await ensureCachedAsset(
+            'loadingchaGif',
+            BOOT_ASSETS.loadingchaGif,
+            'loadingcha.gif'
+        );
+
+        DP_ASSETS.lockWebp = await ensureCachedAsset('lockWebp', BOOT_ASSETS.lockWebp, 'lock.webp');
+
+        DP_ASSETS.ownerAvatarPng = await ensureCachedAsset(
+            'ownerAvatarPng',
+            BOOT_ASSETS.ownerAvatarPng,
+            'owner_avatar.png'
+        );
+
+        DP_ASSETS.chumo1Png = await ensureCachedAsset(
+            'chumo1Png',
+            BOOT_ASSETS.chumo1Png,
+            'chumo1.png'
+        );
+
+        DP_ASSETS.chumo2Png = await ensureCachedAsset(
+            'chumo2Png',
+            BOOT_ASSETS.chumo2Png,
+            'chumo2.png'
+        );
+    }
+
+    function patchExistingStaticImgs() {
+        document.querySelectorAll('img.empty-state-img').forEach((img) => {
+            img.src = DP_ASSETS.loadingGif;
+        });
+
+        document.querySelectorAll('img.dp-offline-img').forEach((img) => {
+            img.src = DP_ASSETS.loadingchaGif;
+        });
+
+        document.querySelectorAll('#dp-owner-panel .owner-avatar img').forEach((img) => {
+            img.src = DP_ASSETS.ownerAvatarPng;
+        });
+
+        document.querySelectorAll('.activate-lock').forEach((img) => {
+            img.src = DP_ASSETS.lockWebp;
+        });
+
+        document.querySelectorAll('#chumo-1').forEach((img) => {
+            img.src = DP_ASSETS.chumo1Png;
+        });
+
+        document.querySelectorAll('#chumo-2').forEach((img) => {
+            img.src = DP_ASSETS.chumo2Png;
+        });
+    }
 
     function goSleep() {
         if (isSleeping) return;
@@ -193,10 +487,12 @@ document.addEventListener('DOMContentLoaded', async function () {
                 if (p) return 'cep_' + String(p);
             }
         } catch (_) {}
+
         const ua = (navigator.userAgent || '') + (navigator.platform || '');
         const dims = (screen.width || 0) + 'x' + (screen.height || 0);
         return 'web_' + btoa(ua + '|' + dims);
     }
+
     const deviceId = await getDeviceId();
 
     async function apiPost(path, body) {
@@ -207,6 +503,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                 body: JSON.stringify(body || {}),
                 cache: 'no-store',
             });
+
             const data = await res.json().catch(() => ({}));
             return { ok: res.ok, data };
         } catch (err) {
@@ -220,6 +517,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     function updateUptime() {
         if (!uptimeEl) return;
+
         const diff = Date.now() - startTime;
         const h = String(Math.floor(diff / 3600000)).padStart(2, '0');
         const m = String(Math.floor((diff % 3600000) / 60000)).padStart(2, '0');
@@ -279,11 +577,16 @@ document.addEventListener('DOMContentLoaded', async function () {
         return !!(data && (data.ok === true || data.valid === true));
     }
 
+    // NEW: boot asset cache early
+    await bootstrapLocalAssets();
+    patchExistingStaticImgs();
+
     function renderActivationUI() {
         if (!navigator.onLine) {
             showOfflineNeedsNetOverlay();
             return;
         }
+
         const overlay = document.createElement('div');
         overlay.id = 'dp-activation';
         overlay.style.cssText = `
@@ -291,94 +594,96 @@ document.addEventListener('DOMContentLoaded', async function () {
             align-items:center;justify-content:center;z-index:999999;color:#fff;
             font-family:Inter,system-ui,Arial,sans-serif;
         `;
+
         overlay.innerHTML = `
-             <div
-            style="
-                width: min(450px, 90vw);
-                border: 1px solid #2a2a2a;
-                border-radius: 14px;
-                background: linear-gradient(180deg, #141416, #0f0f10);
-            "
-        >
-            <div style="padding: 22px 20px" class="dalbayop">
-                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px">
-                    <div
-                        style="
-                            width: 32px;
-                            height: 32px;
-                            border-radius: 8px;
-                            background: #3537ff;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                        "
-                    >
-                        <img
-                            class="activate-lock"
-                            src="https://raw.githubusercontent.com/Cyber05CC/darkpanel/03ea76a4a76680970d737fefe3a599e90e71cd3e/assets/icon/lock.webp"
-                            alt="lock"
-                        />
+            <div
+                style="
+                    width: min(450px, 90vw);
+                    border: 1px solid #2a2a2a;
+                    border-radius: 14px;
+                    background: linear-gradient(180deg, #141416, #0f0f10);
+                "
+            >
+                <div style="padding: 22px 20px" class="dalbayop">
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px">
+                        <div
+                            style="
+                                width: 32px;
+                                height: 32px;
+                                border-radius: 8px;
+                                background: #3537ff;
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                            "
+                        >
+                            <img
+                                class="activate-lock"
+                                src="${DP_ASSETS.lockWebp}"
+                                alt="lock"
+                            />
+                        </div>
+                        <h2 style="margin: 0; font-size: 18px; font-weight: 700">
+                            darkPanel Activation
+                        </h2>
                     </div>
-                    <h2 style="margin: 0; font-size: 18px; font-weight: 700">
-                        darkPanel Activation
-                    </h2>
-                </div>
-                <p style="margin: 6px 0 14px; color: #bdbdbd; font-size: 12px">
-                    Please enter your key.
-                </p>
-                <input
-                    id="dp-key"
-                    placeholder="XXXX-XXXX-XXXX"
-                    spellcheck="false"
-                    style="
-                        width: 100%;
-                        padding: 10px 12px;
-                        border-radius: 10px;
-                        border: 1px solid #2b2b2b;
-                        background: #131318;
-                        color: #eaeaea;
-                        outline: none;
-                        font-size: 13px;
-                    "
-                />
-                <div style="display: flex; gap: 10px; margin-top: 12px">
-                    <button
-                        id="dp-activate"
+                    <p style="margin: 6px 0 14px; color: #bdbdbd; font-size: 12px">
+                        Please enter your key.
+                    </p>
+                    <input
+                        id="dp-key"
+                        placeholder="XXXX-XXXX-XXXX"
+                        spellcheck="false"
                         style="
-                            flex: 1;
+                            width: 100%;
                             padding: 10px 12px;
-                            border: 0;
                             border-radius: 10px;
-                            background: #4a6cff;
-                            color: #fff;
-                            font-weight: 600;
-                            cursor: pointer;
+                            border: 1px solid #2b2b2b;
+                            background: #131318;
+                            color: #eaeaea;
+                            outline: none;
+                            font-size: 13px;
                         "
-                    >
-                        Activate
-                    </button>
+                    />
+                    <div style="display: flex; gap: 10px; margin-top: 12px">
+                        <button
+                            id="dp-activate"
+                            style="
+                                flex: 1;
+                                padding: 10px 12px;
+                                border: 0;
+                                border-radius: 10px;
+                                background: #4a6cff;
+                                color: #fff;
+                                font-weight: 600;
+                                cursor: pointer;
+                            "
+                        >
+                            Activate
+                        </button>
+                    </div>
+                    <div
+                        id="dp-msg"
+                        style="margin-top: 10px; color: #9ca3af; font-size: 12px; min-height: 16px"
+                    ></div>
                 </div>
-                <div
-                    id="dp-msg"
-                    style="margin-top: 10px; color: #9ca3af; font-size: 12px; min-height: 16px"
-                ></div>
+                <div class="chumolar">
+                    <img
+                        style="margin-top: 7.5px"
+                        id="chumo-1"
+                        src="${DP_ASSETS.chumo1Png}"
+                        alt="chumo1"
+                    />
+                    <h1 class="niger">darkPanel</h1>
+                    <img
+                        id="chumo-2"
+                        src="${DP_ASSETS.chumo2Png}"
+                        alt="chumo2"
+                    />
+                </div>
             </div>
-            <div class="chumolar">
-                <img
-                    style="margin-top: 7.5px"
-                    id="chumo-1"
-                    src="https://raw.githubusercontent.com/Cyber05CC/darkpanel/86a929382b407e7574501733d57645d5516e11d9/assets/icon/chumo1.png"
-                    alt="chumo1"
-                />
-                <h1 class="niger">Wussap nigga</h1>
-                <img
-                    id="chumo-2"
-                    src="https://raw.githubusercontent.com/Cyber05CC/darkpanel/86a929382b407e7574501733d57645d5516e11d9/assets/icon/chumo2.png"
-                    alt="chumo2"
-                />
-            </div>
-        </div>
         `;
+
         document.body.appendChild(overlay);
 
         const exitBtn = document.getElementById('dp-exit');
@@ -395,6 +700,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                 const el = document.getElementById('dp-key');
                 const msg = document.getElementById('dp-msg');
                 const key = (el?.value || '').trim().toUpperCase();
+
                 if (!msg) return;
                 if (!key) {
                     msg.textContent = 'Please paste your key.';
@@ -432,6 +738,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     function showOfflineRibbon() {
         if (document.getElementById('offline-ribbon')) return;
+
         const bar = document.createElement('div');
         bar.id = 'offline-ribbon';
         bar.style.cssText = `
@@ -441,6 +748,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         `;
         bar.textContent = '📡 Offline mode — some features need internet';
         document.body.appendChild(bar);
+
         window.addEventListener(
             'online',
             () => {
@@ -464,10 +772,12 @@ document.addEventListener('DOMContentLoaded', async function () {
             <button id="retryNet" style="margin-top:10px;padding:8px 14px;border-radius:10px;border:0;background:#4a6cff;color:#fff;font-weight:600">Try again</button>
         `;
         document.body.appendChild(el);
+
         const go = () => {
             el.remove();
             location.reload();
         };
+
         const btn = document.getElementById('retryNet');
         if (btn) btn.onclick = go;
         window.addEventListener('online', go, { once: true });
@@ -491,34 +801,25 @@ document.addEventListener('DOMContentLoaded', async function () {
         return;
     }
 
-    // INFO PANEL HANDLING - TO'G'RI ISHLASHI UCHUN
     const infoModal = document.getElementById('dp-info-modal');
     const closeInfoBtn = infoModal?.querySelector('.close-info');
     const btnWrapper = document.querySelector('.btn-wrapper');
 
-    // Info panelni ochish
     function openInfoModal() {
         if (!infoModal) return;
 
-        // Performance modeni o'chirish info panel ochilganda
         perfManager.disablePerformanceMode();
-
         infoModal.classList.add('show');
         document.body.style.overflow = 'hidden';
-
-        // Modal kontentini to'ldirish
         fillInfoModal();
     }
 
-    // Info panelni yopish
     function closeInfoModal() {
         if (!infoModal) return;
-
         infoModal.classList.remove('show');
         document.body.style.overflow = '';
     }
 
-    // Event listenerlarni qo'shish
     if (btnWrapper) {
         btnWrapper.addEventListener('click', openInfoModal);
     }
@@ -527,14 +828,12 @@ document.addEventListener('DOMContentLoaded', async function () {
         closeInfoBtn.addEventListener('click', closeInfoModal);
     }
 
-    // Modal tashqarisini bosganda yopish
     infoModal?.addEventListener('click', (e) => {
         if (e.target === infoModal) {
             closeInfoModal();
         }
     });
 
-    // Escape tugmasi bilan yopish
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && infoModal?.classList.contains('show')) {
             closeInfoModal();
@@ -596,7 +895,6 @@ document.addEventListener('DOMContentLoaded', async function () {
             : 'Browser';
 
         document.getElementById('modal-device').textContent = deviceId.slice(0, 10) + '…';
-
         document.getElementById('modal-net').textContent = navigator.onLine ? 'Stable' : 'Offline';
     }
 
@@ -616,32 +914,28 @@ document.addEventListener('DOMContentLoaded', async function () {
         }
     });
 
-    // activePreviewImg o'chirildi — autoplay observer boshqaradi
     let selectedPresetEl = null;
-    // ========== AUTOPLAY PREVIEW SYSTEM ==========
-    // Toggle bilan boshqariladi — yoqilsa footage o'ynaydi, o'chirilsa to'xtaydi
 
-    let autoplayEnabled = localStorage.getItem('dp_autoplay') !== 'off'; // default: ON
+    // ========== AUTOPLAY PREVIEW SYSTEM ==========
+    let autoplayEnabled = localStorage.getItem('dp_autoplay') !== 'off';
     let autoplayObserver = null;
     const autoplayingSet = new Set();
 
     function playPreview(img) {
-        if (!autoplayEnabled) return; // TOGGLE O'CHIRILGAN
+        if (!autoplayEnabled) return;
         if (!img || !img.dataset.src) return;
         if (autoplayingSet.has(img)) return;
 
         autoplayingSet.add(img);
 
-        // Rasm YUKLANGANIDAN KEYIN ko'rsatish
         img.onload = () => {
             img.style.opacity = '1';
-            // Shimmer ni yashirish
             const placeholder = img.parentElement?.querySelector('.image-placeholder');
             if (placeholder) placeholder.style.display = 'none';
         };
 
         img.src = img.dataset.src;
-        // Agar allaqachon cache da bo'lsa
+
         if (img.complete && img.naturalWidth > 0) {
             img.style.opacity = '1';
             const placeholder = img.parentElement?.querySelector('.image-placeholder');
@@ -656,7 +950,6 @@ document.addEventListener('DOMContentLoaded', async function () {
         img.removeAttribute('src');
         img.style.opacity = '0';
 
-        // Shimmer ni qaytarish
         const placeholder = img.parentElement?.querySelector('.image-placeholder');
         if (placeholder) placeholder.style.display = '';
 
@@ -671,7 +964,6 @@ document.addEventListener('DOMContentLoaded', async function () {
     }
 
     function initAutoplayObserver() {
-        // Eski observerni tozalash
         if (autoplayObserver) {
             autoplayObserver.disconnect();
         }
@@ -685,10 +977,8 @@ document.addEventListener('DOMContentLoaded', async function () {
 
                     if (entry.isIntersecting) {
                         playPreview(img);
-                    } else {
-                        if (preset !== selectedPresetEl) {
-                            stopPreview(img);
-                        }
+                    } else if (preset !== selectedPresetEl) {
+                        stopPreview(img);
                     }
                 });
             },
@@ -702,10 +992,8 @@ document.addEventListener('DOMContentLoaded', async function () {
     function observeVisiblePresets() {
         if (!autoplayObserver) return;
 
-        // Avval hammasini unobserve
         autoplayObserver.disconnect();
 
-        // Faqat display:block bo'lgan presetlarni observe
         document.querySelectorAll('.preset').forEach((preset) => {
             if (preset.style.display !== 'none') {
                 autoplayObserver.observe(preset);
@@ -713,7 +1001,6 @@ document.addEventListener('DOMContentLoaded', async function () {
         });
     }
 
-    // FALLBACK: Observer ishlamasa, to'g'ridan-to'g'ri yuklash
     function forceLoadVisiblePresets() {
         const container = document.getElementById('presets-container');
         if (!container) return;
@@ -724,7 +1011,6 @@ document.addEventListener('DOMContentLoaded', async function () {
             if (preset.style.display === 'none') return;
 
             const rect = preset.getBoundingClientRect();
-            // Ekranda ko'rinadimi?
             const isVisible = rect.bottom > containerRect.top && rect.top < containerRect.bottom;
 
             if (isVisible) {
@@ -736,20 +1022,16 @@ document.addEventListener('DOMContentLoaded', async function () {
         });
     }
 
-    // ========== AUTOPLAY TOGGLE ==========
     function toggleAutoplay() {
         autoplayEnabled = !autoplayEnabled;
         localStorage.setItem('dp_autoplay', autoplayEnabled ? 'on' : 'off');
 
-        // UI tugmasini yangilash
         updateAutoplayBtn();
 
         if (autoplayEnabled) {
-            // Yoqildi — ko'rinadigan presetlarni yuklash
             observeVisiblePresets();
             setTimeout(() => forceLoadVisiblePresets(), 100);
         } else {
-            // O'chirildi — hammasini to'xtatish
             stopAllPreviews();
             if (autoplayObserver) autoplayObserver.disconnect();
         }
@@ -758,6 +1040,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     function updateAutoplayBtn() {
         const btn = document.getElementById('autoplayToggle');
         if (!btn) return;
+
         if (autoplayEnabled) {
             btn.classList.add('active');
             btn.title = 'Autoplay ON';
@@ -767,7 +1050,6 @@ document.addEventListener('DOMContentLoaded', async function () {
         }
     }
 
-    // Tugmani yaratish (tabs ichiga)
     function createAutoplayButton() {
         const gridControl = document.querySelector('.grid-control');
         if (!gridControl || document.getElementById('autoplayToggle')) return;
@@ -779,7 +1061,6 @@ document.addEventListener('DOMContentLoaded', async function () {
         btn.innerHTML = '▶';
         btn.addEventListener('click', toggleAutoplay);
 
-        // Grid control dan oldin qo'yish
         gridControl.parentElement.insertBefore(btn, gridControl);
     }
 
@@ -828,7 +1109,10 @@ document.addEventListener('DOMContentLoaded', async function () {
         setupConnectionWatcher();
         await autoUpdateIfNeeded();
 
-        // Initialize lazy loader
+        // assets qayta patch
+        await bootstrapLocalAssets();
+        patchExistingStaticImgs();
+
         lazyLoader = new ImprovedLazyLoader();
 
         init();
@@ -836,7 +1120,6 @@ document.addEventListener('DOMContentLoaded', async function () {
         setupTabsUnderline();
 
         const presetsContainer = document.getElementById('presetList');
-
         if (presetsContainer) {
             presetsContainer.addEventListener('mousedown', (e) => {
                 if (e.target === presetsContainer) {
@@ -854,7 +1137,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                 modal.className = 'dp-offline-modal';
                 modal.innerHTML = `
                     <div class="dp-offline-card">
-                        <img src="./assets/icon/loadingcha.gif" alt="offline" class="dp-offline-img" />
+                        <img src="${DP_ASSETS.loadingchaGif}" alt="offline" class="dp-offline-img" />
                         <p class="dp-offline-text">No Internet Connection</p>
                     </div>
                 `;
@@ -880,15 +1163,12 @@ document.addEventListener('DOMContentLoaded', async function () {
                     { once: true }
                 );
 
-                // Fallback — transition ishlamasa
                 setTimeout(() => {
                     if (modal.parentElement) modal.remove();
                 }, 600);
             }
 
-            window.addEventListener('offline', () => {
-                showOfflineModal();
-            });
+            window.addEventListener('offline', showOfflineModal);
 
             window.addEventListener('online', () => {
                 hideOfflineModal();
@@ -906,6 +1186,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                 if ((r[i] || 0) > (l[i] || 0)) return true;
                 if ((r[i] || 0) < (l[i] || 0)) return false;
             }
+
             return false;
         }
 
@@ -936,7 +1217,6 @@ document.addEventListener('DOMContentLoaded', async function () {
                 }
 
                 console.log('⬆ darkPanel auto-update', installed, '→', remote.version);
-
                 localStorage.setItem('darkpanel_cache_bust', String(Date.now()));
 
                 let wrote = false;
@@ -953,8 +1233,9 @@ document.addEventListener('DOMContentLoaded', async function () {
                     return;
                 }
 
-                console.warn('❗ tryWriteToExtension failed or csInterface yok – overlay fallback');
-
+                console.warn(
+                    '❗ tryWriteToExtension failed or csInterface yo‘q – overlay fallback'
+                );
                 localStorage.setItem(LS_LAST_APPLIED, remote.version);
                 currentVersion = remote.version;
                 hardReloadUI(remote.version);
@@ -965,26 +1246,40 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         async function tryWriteToExtension(files) {
             if (!csInterface) return false;
-            const extRoot = csInterface.getSystemPath(SystemPath.EXTENSION);
+            const extRoot = normalizeSystemPath(csInterface.getSystemPath(SystemPath.EXTENSION));
 
             const ensureFoldersScript = (fullPath) => `
                 (function() {
                     function ensureFolder(path) {
-                        var parts = path.split(/[\\\\\\/]/);
+                        var normalized = path.replace(/\\\\/g, "/");
+                        var parts = normalized.split("/");
                         var acc = parts.shift();
+
+                        if (acc === "") acc = "/";
+
                         while (parts.length) {
-                            acc += "/" + parts.shift();
+                            var part = parts.shift();
+                            if (!part) continue;
+
+                            if (acc === "/") acc += part;
+                            else acc += "/" + part;
+
                             var f = new Folder(acc);
-                            if (!f.exists) { try { f.create(); } catch(e) { return "ERR:" + e; } }
+                            if (!f.exists) {
+                                if (!f.create()) return "ERR:" + acc;
+                            }
                         }
+
                         return "OK";
                     }
+
                     return ensureFolder("${fullPath.replace(/"/g, '\\"')}");
                 })();
             `;
 
             for (const [rel, info] of Object.entries(files || {})) {
                 if (!SUPPORTED_TEXT_FILES.includes(rel)) continue;
+
                 const url = info.url + '?v=' + Date.now();
                 const text = await (await fetch(url, { cache: 'no-store' })).text();
 
@@ -1003,11 +1298,13 @@ document.addEventListener('DOMContentLoaded', async function () {
                 const wrote = await writeFileInChunks(targetFile, text);
                 if (!wrote) return false;
             }
+
             return true;
         }
 
         async function writeFileInChunks(targetFile, text) {
             if (!csInterface) return false;
+
             const chunkSize = 30000;
             const chunks = [];
             for (let i = 0; i < text.length; i += chunkSize) {
@@ -1028,17 +1325,21 @@ document.addEventListener('DOMContentLoaded', async function () {
                         } catch(e) { return "ERR:" + e; }
                     })();
                 `;
+
                 const result = await new Promise((resolve) => {
                     csInterface.evalScript(writeChunkScript, (res) => resolve(res === 'OK'));
                 });
+
                 if (!result) return false;
                 mode = 'a';
             }
+
             return true;
         }
 
         function hardReloadExtension() {
             sessionStorage.clear();
+
             const keep = {
                 favorites: localStorage.getItem('favorites'),
                 currentPack: localStorage.getItem('currentPack'),
@@ -1047,7 +1348,9 @@ document.addEventListener('DOMContentLoaded', async function () {
                 lastApplied: localStorage.getItem(LS_LAST_APPLIED),
                 license: localStorage.getItem(LOCAL_KEY),
             };
+
             localStorage.clear();
+
             if (keep.favorites) localStorage.setItem('favorites', keep.favorites);
             if (keep.currentPack) localStorage.setItem('currentPack', keep.currentPack);
             if (keep.gridCols) localStorage.setItem('gridCols', keep.gridCols);
@@ -1072,6 +1375,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                     (res) => console.log('🔁 Reload:', res)
                 );
             }
+
             setTimeout(() => location.reload(true), 800);
         }
 
@@ -1110,7 +1414,9 @@ document.addEventListener('DOMContentLoaded', async function () {
             if (!presetList) return;
 
             presetList.innerHTML =
-                '<div class="loading-placeholder" padding: 2rem;"><img src="./assets/icon/loadingcha.webp" alt="loading" /></div>';
+                '<div class="loading-placeholder" padding: 2rem;"><img src="' +
+                DP_ASSETS.loadingchaGif +
+                '" alt="loading" /></div>';
 
             let presetIndexes = [];
 
@@ -1140,9 +1446,6 @@ document.addEventListener('DOMContentLoaded', async function () {
                 const preset = document.createElement('div');
                 preset.className = 'preset';
 
-                // entry raqam yoki obyekt bo'lishi mumkin:
-                // Raqam: 3           → default extension (.aep effect uchun, .ffx text uchun)
-                // Obyekt: {n:3, ext:".ffx"} → maxsus extension
                 let realNum, extension;
                 if (typeof entry === 'object' && entry !== null) {
                     realNum = entry.n;
@@ -1151,8 +1454,8 @@ document.addEventListener('DOMContentLoaded', async function () {
                     realNum = entry;
                     extension = currentPack === 'effect' ? '.aep' : '.ffx';
                 }
-                const fileName = `${currentPack}_${realNum}${extension}`;
 
+                const fileName = `${currentPack}_${realNum}${extension}`;
                 preset.dataset.file = fileName;
 
                 const footageSrc = `${GITHUB_RAW}/assets/videos/${currentPack}_${realNum}.webp`;
@@ -1175,35 +1478,29 @@ document.addEventListener('DOMContentLoaded', async function () {
             });
 
             setTimeout(() => {
-                if (lazyLoader) {
-                    lazyLoader.observe(lazyImages);
-                }
+                if (lazyLoader) lazyLoader.observe(lazyImages);
             }, 100);
 
             presets = document.querySelectorAll('.preset');
             initializeFavorites();
-            initPresetPreviews(); // Observer AVVAL yaratiladi
-            showPage(1); // Keyin observe qilinadi
+            initPresetPreviews();
+            showPage(1);
         }
-        function initPresetPreviews() {
-            const presets = document.querySelectorAll('.preset');
 
-            presets.forEach((preset) => {
+        function initPresetPreviews() {
+            const allPresets = document.querySelectorAll('.preset');
+
+            allPresets.forEach((preset) => {
                 const webpImg = preset.querySelector('.preset-img');
                 if (!webpImg) return;
-
-                // Hover endi kerak emas — autoplay observer boshqaradi
-                // Faqat CLICK (SELECT) qoldi
 
                 preset.addEventListener('click', (e) => {
                     if (e.target.classList.contains('favorite-check')) return;
 
-                    // A) Eski tanlangan kartochkani bekor qilish
                     if (selectedPresetEl && selectedPresetEl !== preset) {
                         selectedPresetEl.classList.remove('selected');
                     }
 
-                    // B) O'zini qayta bosish (Deselect)
                     if (selectedPresetEl === preset) {
                         preset.classList.remove('selected');
                         selectedPresetEl = null;
@@ -1212,7 +1509,6 @@ document.addEventListener('DOMContentLoaded', async function () {
                         return;
                     }
 
-                    // C) Yangi kartochka tanlash
                     preset.classList.add('selected');
                     selectedPresetEl = preset;
                     selectedPreset = preset.dataset.file;
@@ -1223,28 +1519,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                 });
             });
 
-            // Autoplay observer ni ishga tushirish
             initAutoplayObserver();
-        }
-        function setupPresetHoverEffects() {
-            presets.forEach((preset) => {
-                preset.addEventListener('mouseenter', () => {
-                    if (isSleeping) return;
-
-                    const img = preset.querySelector('.preset-img');
-                    if (img && !img.classList.contains('lazy')) {
-                        img.style.transform = 'scale(1.05)';
-                        img.style.transition = 'transform 0.2s ease';
-                    }
-                });
-
-                preset.addEventListener('mouseleave', () => {
-                    const img = preset.querySelector('.preset-img');
-                    if (img) {
-                        img.style.transform = 'scale(1)';
-                    }
-                });
-            });
         }
 
         function initializeFavorites() {
@@ -1252,6 +1527,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                 const file = preset.dataset.file;
                 const checkbox = preset.querySelector('.favorite-check');
                 if (!checkbox) return;
+
                 checkbox.checked = favorites.includes(file);
                 checkbox.addEventListener('change', function () {
                     toggleFavorite(file, this.checked);
@@ -1262,6 +1538,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         function toggleFavorite(file, isFavorite) {
             if (isFavorite && !favorites.includes(file)) favorites.push(file);
             else if (!isFavorite) favorites = favorites.filter((f) => f !== file);
+
             localStorage.setItem('favorites', JSON.stringify(favorites));
             if (currentView === 'favorites') showPage(1);
         }
@@ -1279,12 +1556,10 @@ document.addEventListener('DOMContentLoaded', async function () {
             currentPage = page;
             totalPages = Math.ceil(filtered.length / itemsPerPage) || 1;
 
-            // Hide all presets first
             presets.forEach((p) => {
                 p.style.display = 'none';
             });
 
-            // PIN bo'limi bo'sh bo'lsa loading animatsiya ko'rsatish
             const emptyState = document.getElementById('dp-empty-state');
             if (emptyState) emptyState.remove();
 
@@ -1293,13 +1568,13 @@ document.addEventListener('DOMContentLoaded', async function () {
                 empty.id = 'dp-empty-state';
                 empty.className = 'dp-empty-state';
                 empty.innerHTML = `
-                <img src="https://raw.githubusercontent.com/Cyber05CC/darkpanel/a0da100633f7eb4a0b0335138f864ab7bc77d566/assets/icon/loading.webp" alt="empty" class="empty-state-img" />
-                <p>${currentView === 'favorites' ? 'No pinned presets' : 'No presets found'}</p>`;
+                    <img src="${DP_ASSETS.loadingGif}" alt="empty" class="empty-state-img" />
+                    <p>${currentView === 'favorites' ? 'No pinned presets' : 'No presets found'}</p>
+                `;
                 presetList.appendChild(empty);
                 return;
             }
 
-            // Show only current page
             const presetsToShow = filtered.slice((page - 1) * itemsPerPage, page * itemsPerPage);
             presetsToShow.forEach((p) => {
                 p.style.display = 'block';
@@ -1309,42 +1584,12 @@ document.addEventListener('DOMContentLoaded', async function () {
             if (prevPageBtn) prevPageBtn.disabled = currentPage === 1;
             if (nextPageBtn) nextPageBtn.disabled = currentPage === totalPages;
 
-            // Autoplay: observe + force load fallback
             setTimeout(() => {
                 observeVisiblePresets();
-                // Fallback: observer ishlamasa, 300ms keyin to'g'ridan-to'g'ri yuklash
                 requestAnimationFrame(() => {
                     setTimeout(() => forceLoadVisiblePresets(), 300);
                 });
             }, 50);
-        }
-
-        function setupPresetSelection() {
-            const presetsContainer = document.getElementById('presetList');
-
-            if (presetsContainer) {
-                presetsContainer.addEventListener('mousedown', (e) => {
-                    if (e.target === presetsContainer) {
-                        clearPresetSelection();
-                    }
-                });
-            }
-
-            presets.forEach((preset) => {
-                preset.addEventListener('click', (e) => {
-                    if (e.target.classList.contains('favorite-check')) return;
-
-                    presets.forEach((p) => p.classList.remove('selected'));
-                    preset.classList.add('selected');
-                    selectedPreset = preset.dataset.file;
-
-                    if (status) {
-                        status.textContent = `Selected: ${
-                            preset.querySelector('.preset-name').textContent
-                        }`;
-                    }
-                });
-            });
         }
 
         function clearPresetSelection() {
@@ -1370,7 +1615,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                 }
 
                 gridButtons.forEach((btn) =>
-                    btn.classList.toggle('active', parseInt(btn.dataset.cols) === cols)
+                    btn.classList.toggle('active', parseInt(btn.dataset.cols, 10) === cols)
                 );
             }
 
@@ -1384,20 +1629,14 @@ document.addEventListener('DOMContentLoaded', async function () {
             function autoDetectGrid() {
                 const width = window.innerWidth;
 
-                if (width <= 420) {
-                    applyGrid(1);
-                } else if (width <= 640) {
-                    applyGrid(2);
-                } else if (width <= 720) {
-                    applyGrid(3);
-                } else {
-                    applyGrid(userSelectedCols);
-                }
+                if (width <= 420) applyGrid(1);
+                else if (width <= 640) applyGrid(2);
+                else if (width <= 720) applyGrid(3);
+                else applyGrid(userSelectedCols);
             }
 
             autoDetectGrid();
 
-            // Debounced resize handler
             let resizeTimeout;
             window.addEventListener('resize', () => {
                 clearTimeout(resizeTimeout);
@@ -1406,16 +1645,17 @@ document.addEventListener('DOMContentLoaded', async function () {
         }
 
         async function applyPreset() {
-            // 1. Validatsiya
             if (!selectedPreset) {
                 const toast = document.createElement('div');
                 toast.className = 'apply-toast';
                 toast.textContent = 'Select a preset first!';
                 document.body.appendChild(toast);
+
                 setTimeout(() => {
                     toast.classList.add('hide');
                     setTimeout(() => toast.remove(), 500);
                 }, 1500);
+
                 return;
             }
 
@@ -1426,13 +1666,12 @@ document.addEventListener('DOMContentLoaded', async function () {
             console.log(`Applying ${extension.toUpperCase()}:`, selectedPreset);
 
             try {
-                // 2. Yuklab olish
                 const res = await fetch(remotePresetUrl, { cache: 'no-store' });
                 if (!res.ok) throw new Error('Preset not found');
+
                 const blob = await res.blob();
                 const base64 = await blobToBase64(blob);
 
-                // 3. Fayl yozish (Chunking)
                 const chunkSize = 20000;
                 const chunks = [];
                 for (let i = 0; i < base64.length; i += chunkSize) {
@@ -1457,28 +1696,15 @@ document.addEventListener('DOMContentLoaded', async function () {
                         await new Promise((r) => csInterface.evalScript(writeScript, r));
                     }
 
-                    // --- APPLY SCRIPT ---
                     let applyScript;
 
                     if (isAEP) {
-                        // =====================================================
-                        // .AEP APPLY v15
-                        //
-                        // TUZATISHLAR:
-                        // 1) Tashqi layerni scale QILMASLIK
-                        // 2) Project panelda "darkPanel" papkasi —
-                        //    hamma import shu ichiga, dublikat bo'lmaydi
-                        // 3) Adjustment layer qo'llab-quvvatlanadi
-                        // 4) Ichki layer transform ga TEGMASLIK
-                        // =====================================================
-
                         const evalP = (script) =>
                             new Promise((resolve) => {
                                 csInterface.evalScript(script, (res) => resolve(res));
                             });
 
                         try {
-                            // ========== STEP 1: IMPORT (undo group TASHQARIDA) ==========
                             const step1 = `(function(){
                                 try {
                                     var f = new File("${escapedPath}");
@@ -1489,7 +1715,6 @@ document.addEventListener('DOMContentLoaded', async function () {
                                     var sel = comp.selectedLayers;
                                     if (sel.length === 0) return "ERR:No Layer";
 
-                                    // Eski dp_temp itemlarni tozalash (CTRL+Z dan qolganlar)
                                     for (var c = app.project.numItems; c >= 1; c--) {
                                         try {
                                             var itm = app.project.item(c);
@@ -1508,18 +1733,23 @@ document.addEventListener('DOMContentLoaded', async function () {
                                     } else if (imported instanceof FolderItem) {
                                         for (var i = 1; i <= imported.numItems; i++) {
                                             if (imported.item(i) instanceof CompItem) {
-                                                srcComp = imported.item(i); break;
+                                                srcComp = imported.item(i);
+                                                break;
                                             }
                                         }
                                     }
+
                                     if (!srcComp || srcComp.numLayers === 0) return "ERR:Bad AEP";
 
-                                    // Adjustment layer tekshirish
                                     var srcLayer = srcComp.layer(1);
                                     var isAdj = srcLayer.adjustmentLayer ? 1 : 0;
                                     var hasSource = sel[0].source ? 1 : 0;
                                     var lw = 0, lh = 0;
-                                    if (hasSource) { lw = sel[0].source.width; lh = sel[0].source.height; }
+
+                                    if (hasSource) {
+                                        lw = sel[0].source.width;
+                                        lh = sel[0].source.height;
+                                    }
 
                                     return "OK:" + srcComp.id + ":" + sel[0].index + ":" + isAdj + ":" + hasSource + ":" + imported.id + ":" + lw + ":" + lh;
                                 } catch(e) { return "ERR:" + e.toString(); }
@@ -1530,32 +1760,29 @@ document.addEventListener('DOMContentLoaded', async function () {
                             if (r1.indexOf('ERR') === 0) throw new Error(r1.replace('ERR:', ''));
 
                             const p = r1.split(':');
-                            const srcId = p[1],
-                                tIdx = p[2],
-                                isAdj = p[3] === '1',
-                                hasSource = p[4] === '1',
-                                importedId = p[5];
-                            const layerW = parseInt(p[6]) || 0,
-                                layerH = parseInt(p[7]) || 0;
+                            const srcId = p[1];
+                            const tIdx = p[2];
+                            const isAdj = p[3] === '1';
+                            const hasSource = p[4] === '1';
+                            const importedId = p[5];
+                            const layerW = parseInt(p[6], 10) || 0;
+                            const layerH = parseInt(p[7], 10) || 0;
 
-                            // ========== STEP 2: APPLY (TOZA UNDO GROUP) ==========
                             const step2 = `(function(){
                                 var undoStarted = false;
                                 try {
                                     var comp = app.project.activeItem;
                                     if (!comp || !(comp instanceof CompItem)) return "Error: No Comp";
 
-                                    // srcComp topish
                                     var srcComp = null;
                                     for (var i = 1; i <= app.project.numItems; i++) {
                                         if (app.project.item(i).id == ${srcId}) { srcComp = app.project.item(i); break; }
                                     }
                                     if (!srcComp) return "Error: srcComp not found";
 
-                                    // Imported item topish (papkaga ko'chirish uchun)
                                     var importedItem = null;
-                                    for (var i = 1; i <= app.project.numItems; i++) {
-                                        if (app.project.item(i).id == ${importedId}) { importedItem = app.project.item(i); break; }
+                                    for (var j = 1; j <= app.project.numItems; j++) {
+                                        if (app.project.item(j).id == ${importedId}) { importedItem = app.project.item(j); break; }
                                     }
 
                                     var targetLayer = comp.layer(${tIdx});
@@ -1564,38 +1791,29 @@ document.addEventListener('DOMContentLoaded', async function () {
                                     app.beginUndoGroup("Apply Smart Preset");
                                     undoStarted = true;
 
-                                    // === PAPKA TASHKIL QILISH ===
-                                    // "darkPanel" papkasini topish yoki yaratish
                                     var dpFolder = null;
-                                    for (var i = 1; i <= app.project.numItems; i++) {
-                                        var itm = app.project.item(i);
+                                    for (var k = 1; k <= app.project.numItems; k++) {
+                                        var itm = app.project.item(k);
                                         if (itm instanceof FolderItem && itm.name === "darkPanel") {
-                                            dpFolder = itm; break;
+                                            dpFolder = itm;
+                                            break;
                                         }
                                     }
+
                                     if (!dpFolder) {
                                         dpFolder = app.project.items.addFolder("darkPanel");
                                     }
 
-                                    // Import qilingan itemni papkaga ko'chirish
-                                    if (importedItem) {
-                                        importedItem.parentFolder = dpFolder;
-                                    }
-                                    // srcComp ham papkaga
+                                    if (importedItem) importedItem.parentFolder = dpFolder;
                                     try { srcComp.parentFolder = dpFolder; } catch(e){}
 
                                     var isAdjustment = ${isAdj ? 'true' : 'false'};
                                     var targetHasSource = ${hasSource ? 'true' : 'false'};
 
                                     if (isAdjustment) {
-                                        // === ADJUSTMENT LAYER REJIMI ===
-                                        // srcComp ichidagi adjustment layerning effectlarini
-                                        // haqiqiy adjustment layer ga ko'chirish (COMP EMAS!)
-
                                         var srcLayer = srcComp.layer(1);
                                         var srcEffects = srcLayer.property("ADBE Effect Parade");
 
-                                        // 1) Haqiqiy adjustment layer yaratish (comp o'lchamida)
                                         var adjLayer = comp.layers.addSolid(
                                             [1,1,1],
                                             srcComp.name || "Adjustment",
@@ -1604,7 +1822,6 @@ document.addEventListener('DOMContentLoaded', async function () {
                                         );
                                         adjLayer.adjustmentLayer = true;
 
-                                        // 2) Effectlarni ko'chirish
                                         if (srcEffects && srcEffects.numProperties > 0) {
                                             var adjEffects = adjLayer.property("ADBE Effect Parade");
 
@@ -1614,32 +1831,36 @@ document.addEventListener('DOMContentLoaded', async function () {
                                                         var vt = src.propertyValueType;
                                                         if (vt === PropertyValueType.NO_VALUE || vt === PropertyValueType.CUSTOM_VALUE) return;
 
-                                                        // Keyframelar
                                                         if (src.isTimeVarying && src.numKeys > 0) {
-                                                            for (var k = 1; k <= src.numKeys; k++) {
-                                                                try { dst.setValueAtTime(src.keyTime(k), src.keyValue(k)); } catch(e){}
+                                                            for (var kk = 1; kk <= src.numKeys; kk++) {
+                                                                try { dst.setValueAtTime(src.keyTime(kk), src.keyValue(kk)); } catch(e){}
                                                             }
-                                                            for (var k = 1; k <= src.numKeys; k++) {
-                                                                try { dst.setInterpolationTypeAtKey(k, src.keyInInterpolationType(k), src.keyOutInterpolationType(k)); } catch(e){}
+                                                            for (var kk2 = 1; kk2 <= src.numKeys; kk2++) {
+                                                                try { dst.setInterpolationTypeAtKey(kk2, src.keyInInterpolationType(kk2), src.keyOutInterpolationType(kk2)); } catch(e){}
                                                                 try {
-                                                                    var ie = src.keyInTemporalEase(k), oe = src.keyOutTemporalEase(k);
+                                                                    var ie = src.keyInTemporalEase(kk2), oe = src.keyOutTemporalEase(kk2);
                                                                     var ni=[], no=[];
-                                                                    for(var j=0;j<ie.length;j++){ni.push(new KeyframeEase(ie[j].speed,ie[j].influence));no.push(new KeyframeEase(oe[j].speed,oe[j].influence));}
-                                                                    dst.setTemporalEaseAtKey(k,ni,no);
+                                                                    for(var z=0; z<ie.length; z++){
+                                                                        ni.push(new KeyframeEase(ie[z].speed, ie[z].influence));
+                                                                        no.push(new KeyframeEase(oe[z].speed, oe[z].influence));
+                                                                    }
+                                                                    dst.setTemporalEaseAtKey(kk2, ni, no);
                                                                 } catch(e){}
                                                             }
                                                         } else {
                                                             try { dst.setValue(src.value); } catch(e){}
                                                         }
-                                                        // Expression
-                                                        try { if(src.expressionEnabled && src.expression) dst.expression = src.expression; } catch(e){}
+
+                                                        try {
+                                                            if (src.expressionEnabled && src.expression) dst.expression = src.expression;
+                                                        } catch(e){}
                                                     } else if (src.propertyType === PropertyType.NAMED_GROUP || src.propertyType === PropertyType.INDEXED_GROUP) {
-                                                        for (var i = 1; i <= src.numProperties; i++) {
+                                                        for (var pp = 1; pp <= src.numProperties; pp++) {
                                                             try {
-                                                                var sp = src.property(i);
+                                                                var sp = src.property(pp);
                                                                 var dp = null;
                                                                 try { dp = dst.property(sp.name); } catch(e){}
-                                                                if (!dp) { try { dp = dst.property(i); } catch(e){} }
+                                                                if (!dp) { try { dp = dst.property(pp); } catch(e){} }
                                                                 if (dp) copyProp(sp, dp);
                                                             } catch(e){}
                                                         }
@@ -1656,39 +1877,20 @@ document.addEventListener('DOMContentLoaded', async function () {
                                             }
                                         }
 
-                                        // 3) Timing — tanlangan layer bilan bir xil
                                         adjLayer.startTime = targetLayer.startTime;
                                         adjLayer.inPoint = targetLayer.inPoint;
                                         adjLayer.outPoint = targetLayer.outPoint;
 
-                                        // 4) Tanlangan layerning USTIGA qo'yish
                                         var curIdx = targetLayer.index;
                                         if (adjLayer.index > curIdx) {
                                             adjLayer.moveBefore(comp.layer(curIdx));
                                         }
 
-                                        // 5) Tanlash
                                         for (var d = 1; d <= comp.numLayers; d++) comp.layer(d).selected = false;
                                         adjLayer.selected = true;
                                         try { adjLayer.name = srcComp.name || "Adjustment"; } catch(e){}
 
                                     } else if (targetHasSource) {
-                                        // === NORMAL REJIM ===
-                                        // TUZILMA:
-                                        // Main Comp (1080×1920)
-                                        //   └── srcComp (1080×1920) + effectlar
-                                        //         └── innerComp (1080×1920) ← LAYER BOUNDS KATTA
-                                        //               └── PNG (540×250) markazda
-                                        //
-                                        // SABAB: effectlar LAYER BOUNDS ichida ishlaydi
-                                        // Agar PNG 540×250 bo'lsa → effect faqat 540×250 da
-                                        // innerComp = 1080×1920 → effect BUTUN COMP da tarqaladi
-                                        
-                                        var srcLayer = srcComp.layer(1);
-                                        var lw = ${layerW};
-                                        var lh = ${layerH};
-                                        
-                                        // 1) innerComp yaratish (MAIN COMP o'lchamida)
                                         var innerComp = app.project.items.addComp(
                                             targetLayer.name + "_inner",
                                             comp.width, comp.height,
@@ -1698,92 +1900,91 @@ document.addEventListener('DOMContentLoaded', async function () {
                                         );
                                         try { innerComp.parentFolder = dpFolder; } catch(e){}
 
-                                        // 2) Layer source ni innerComp ichiga qo'shish
                                         var innerLayer = innerComp.layers.add(targetLayer.source);
-                                        // Markazga joylash
                                         innerLayer.property("ADBE Transform Group").property("ADBE Position").setValue([comp.width/2, comp.height/2]);
 
-                                        // 3) replaceSource — innerComp (1080×1920) ni srcComp ichiga
-                                        //    Endi layer bounds = 1080×1920 → effectlar to'liq ishlaydi!
-                                        srcLayer.replaceSource(innerComp, false);
-                                        
-                                        // 4) srcComp ni MAIN COMP o'lchamiga resize
+                                        var srcLayer2 = srcComp.layer(1);
+                                        srcLayer2.replaceSource(innerComp, false);
+
                                         srcComp.width = comp.width;
                                         srcComp.height = comp.height;
                                         srcComp.frameDuration = comp.frameDuration;
                                         srcComp.duration = comp.duration;
 
-                                        // 5) Ichki layer markazga
                                         try {
                                             var inner = srcComp.layer(1);
                                             inner.property("ADBE Transform Group").property("ADBE Position").setValue([comp.width/2, comp.height/2]);
                                         } catch(e){}
 
-                                        // 6) srcComp ni main comp ga qo'shish
                                         var newLayer = comp.layers.add(srcComp);
                                         newLayer.collapseTransformation = true;
 
-                                        // 5) Timing ko'chirish
                                         newLayer.startTime = targetLayer.startTime;
                                         newLayer.inPoint = targetLayer.inPoint;
                                         newLayer.outPoint = targetLayer.outPoint;
 
-                                        // 6) BARCHA TRANSFORM ko'chirish
                                         try {
                                             var sT = targetLayer.property("ADBE Transform Group");
                                             var dT = newLayer.property("ADBE Transform Group");
                                             var tProps = ["ADBE Position","ADBE Scale","ADBE Rotate Z","ADBE Opacity"];
-                                            try { if(targetLayer.threeDLayer) { tProps.push("ADBE Rotate X","ADBE Rotate Y"); newLayer.threeDLayer = true; } } catch(e){}
+
+                                            try {
+                                                if (targetLayer.threeDLayer) {
+                                                    tProps.push("ADBE Rotate X","ADBE Rotate Y");
+                                                    newLayer.threeDLayer = true;
+                                                }
+                                            } catch(e){}
+
                                             for (var pi = 0; pi < tProps.length; pi++) {
                                                 try {
-                                                    var sp = sT.property(tProps[pi]);
-                                                    var dp = dT.property(tProps[pi]);
-                                                    if (!sp || !dp) continue;
-                                                    if (sp.numKeys > 0) {
-                                                        for (var k = 1; k <= sp.numKeys; k++) {
-                                                            dp.setValueAtTime(sp.keyTime(k), sp.keyValue(k));
-                                                            try { dp.setInterpolationTypeAtKey(k, sp.keyInInterpolationType(k), sp.keyOutInterpolationType(k)); } catch(e){}
+                                                    var sp2 = sT.property(tProps[pi]);
+                                                    var dp2 = dT.property(tProps[pi]);
+                                                    if (!sp2 || !dp2) continue;
+
+                                                    if (sp2.numKeys > 0) {
+                                                        for (var nk = 1; nk <= sp2.numKeys; nk++) {
+                                                            dp2.setValueAtTime(sp2.keyTime(nk), sp2.keyValue(nk));
+                                                            try {
+                                                                dp2.setInterpolationTypeAtKey(nk, sp2.keyInInterpolationType(nk), sp2.keyOutInterpolationType(nk));
+                                                            } catch(e){}
                                                         }
                                                     } else {
-                                                        dp.setValue(sp.value);
+                                                        dp2.setValue(sp2.value);
                                                     }
-                                                    try { if(sp.expressionEnabled && sp.expression) dp.expression = sp.expression; } catch(e){}
+
+                                                    try {
+                                                        if (sp2.expressionEnabled && sp2.expression) dp2.expression = sp2.expression;
+                                                    } catch(e){}
                                                 } catch(e){}
                                             }
                                         } catch(e){}
 
-                                        // 7) Layer tartibini to'g'rilash
-                                        var curIdx = targetLayer.index;
-                                        if (curIdx > 1) {
-                                            newLayer.moveAfter(comp.layer(curIdx));
+                                        var curIdx2 = targetLayer.index;
+                                        if (curIdx2 > 1) {
+                                            newLayer.moveAfter(comp.layer(curIdx2));
                                         }
 
-                                        // 8) Eski layerni o'chirish
                                         targetLayer.remove();
 
-                                        // 9) Tanlash
-                                        for (var d = 1; d <= comp.numLayers; d++) comp.layer(d).selected = false;
+                                        for (var dd = 1; dd <= comp.numLayers; dd++) comp.layer(dd).selected = false;
                                         newLayer.selected = true;
                                         try { newLayer.name = srcComp.name; } catch(e){}
 
                                     } else {
-                                        // === SOURCE YO'Q (text, shape, null, camera) ===
-                                        // srcComp ni oddiy layer sifatida qo'shish
-                                        var newLayer = comp.layers.add(srcComp);
-                                        newLayer.startTime = comp.time;
+                                        var newLayer2 = comp.layers.add(srcComp);
+                                        newLayer2.startTime = comp.time;
 
-                                        var curIdx = targetLayer.index;
-                                        if (newLayer.index !== curIdx) {
-                                            newLayer.moveBefore(comp.layer(curIdx));
+                                        var curIdx3 = targetLayer.index;
+                                        if (newLayer2.index !== curIdx3) {
+                                            newLayer2.moveBefore(comp.layer(curIdx3));
                                         }
 
-                                        for (var d = 1; d <= comp.numLayers; d++) comp.layer(d).selected = false;
-                                        newLayer.selected = true;
-                                        try { newLayer.name = srcComp.name; } catch(e){}
-                                        newLayer.collapseTransformation = true;
+                                        for (var d2 = 1; d2 <= comp.numLayers; d2++) comp.layer(d2).selected = false;
+                                        newLayer2.selected = true;
+                                        try { newLayer2.name = srcComp.name; } catch(e){}
+                                        newLayer2.collapseTransformation = true;
                                     }
 
-                                    // Temp faylni o'chirish
                                     try { var tf = new File("${escapedPath}"); tf.remove(); } catch(e){}
 
                                     app.endUndoGroup();
@@ -1801,15 +2002,18 @@ document.addEventListener('DOMContentLoaded', async function () {
                             if (r2.indexOf('Success') !== -1) {
                                 const lastAction = document.getElementById('dp-last-action');
                                 const lastTime = document.getElementById('dp-last-time');
+
                                 if (lastAction) lastAction.textContent = 'Effect Fitted';
                                 if (lastTime) {
                                     const now = new Date();
                                     lastTime.textContent = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
                                 }
+
                                 const toast = document.createElement('div');
                                 toast.className = 'apply-toast';
                                 toast.textContent = 'EFFECTS ADDED';
                                 document.body.appendChild(toast);
+
                                 setTimeout(() => {
                                     toast.classList.add('hide');
                                     setTimeout(() => toast.remove(), 500);
@@ -1826,14 +2030,15 @@ document.addEventListener('DOMContentLoaded', async function () {
                                 String(stepErr.message || stepErr).replace('Error: ', '') ||
                                 'ERROR';
                             document.body.appendChild(toast);
+
                             setTimeout(() => {
                                 toast.classList.add('hide');
                                 setTimeout(() => toast.remove(), 500);
                             }, 2000);
                         }
+
                         return;
                     } else {
-                        // .FFX logic (Short & Safe)
                         applyScript = `(function(){ 
                             var res = "Success";
                             app.beginUndoGroup("Apply Preset");
@@ -1851,21 +2056,25 @@ document.addEventListener('DOMContentLoaded', async function () {
                     }
 
                     csInterface.evalScript(applyScript, (result) => {
-                        // v8: result format is "Status|debug_info"
                         console.log('[darkPanel AEP debug]', result);
+
                         if (result && result.indexOf('Success') !== -1) {
                             const lastAction = document.getElementById('dp-last-action');
                             const lastTime = document.getElementById('dp-last-time');
+
                             if (lastAction)
                                 lastAction.textContent = isAEP ? 'Effect Fitted' : 'Preset Applied';
+
                             if (lastTime) {
                                 const now = new Date();
                                 lastTime.textContent = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
                             }
+
                             const toast = document.createElement('div');
                             toast.className = 'apply-toast';
                             toast.textContent = isAEP ? 'EFFECTS ADDED' : 'APPLIED';
                             document.body.appendChild(toast);
+
                             setTimeout(() => {
                                 toast.classList.add('hide');
                                 setTimeout(() => toast.remove(), 500);
@@ -1878,6 +2087,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                             toast.textContent =
                                 result.split('|')[0].replace('Error: ', '') || 'ERROR';
                             document.body.appendChild(toast);
+
                             setTimeout(() => {
                                 toast.classList.add('hide');
                                 setTimeout(() => toast.remove(), 500);
@@ -1899,22 +2109,6 @@ document.addEventListener('DOMContentLoaded', async function () {
             });
         }
 
-        function showApplyToast(msg = 'DONE') {
-            const old = document.querySelector('.apply-toast');
-            if (old) old.remove();
-
-            const toast = document.createElement('div');
-            toast.className = 'apply-toast';
-            toast.textContent = msg;
-
-            document.body.appendChild(toast);
-
-            setTimeout(() => {
-                toast.classList.add('hide');
-                setTimeout(() => toast.remove(), 500);
-            }, 1200);
-        }
-
         function setupEventListeners() {
             prevPageBtn?.addEventListener(
                 'click',
@@ -1924,39 +2118,41 @@ document.addEventListener('DOMContentLoaded', async function () {
                 'click',
                 () => currentPage < totalPages && showPage(currentPage + 1)
             );
+
             refreshBtn?.addEventListener('click', () => {
                 selectedPreset = null;
                 presets.forEach((p) => p.classList.remove('selected'));
                 if (status) status.textContent = 'No items selected';
                 showPage(1);
             });
+
             applyBtn?.addEventListener('click', applyPreset);
             allTab?.addEventListener('click', () => switchTab('all'));
             favoritesTab?.addEventListener('click', () => switchTab('favorites'));
+
             textPackBtn?.addEventListener('click', (e) => {
                 e.preventDefault();
                 switchPack('text');
             });
+
             effectPackBtn?.addEventListener('click', (e) => {
                 e.preventDefault();
                 switchPack('effect');
             });
 
             const ownerBtn = document.getElementById('ownerBtn');
-
             if (ownerBtn) {
                 ownerBtn.addEventListener('click', () => {
                     closeInfoModal();
                     const ownerPanel = document.getElementById('dp-owner-panel');
                     if (ownerPanel) {
                         ownerPanel.classList.add('show');
-                        // Real-time subscriber count olish
+                        patchExistingStaticImgs();
                         fetchSubscriberCount();
                     }
                 });
             }
 
-            // Subscriber count fetch
             async function fetchSubscriberCount() {
                 const el = document.getElementById('owner-sub-count');
                 if (!el) return;
@@ -1964,15 +2160,19 @@ document.addEventListener('DOMContentLoaded', async function () {
                 try {
                     el.textContent = '...';
                     el.classList.add('loading');
+
                     const res = await fetch(
                         API_BASE.replace('/api', '') + '/api/telegram/subscribers',
                         {
                             cache: 'no-store',
                         }
                     );
+
                     if (!res.ok) throw new Error('API error');
+
                     const data = await res.json();
                     el.classList.remove('loading');
+
                     if (data.count) {
                         el.textContent = data.count.toLocaleString();
                     } else {
@@ -1985,7 +2185,6 @@ document.addEventListener('DOMContentLoaded', async function () {
                 }
             }
 
-            // Owner panel Back tugmasi
             const ownerBackBtn = document.getElementById('ownerBackBtn');
             if (ownerBackBtn) {
                 ownerBackBtn.addEventListener('click', () => {
@@ -1994,11 +2193,11 @@ document.addEventListener('DOMContentLoaded', async function () {
                 });
             }
 
-            // Owner panel — tashqi linklar (default brauzerda ochish)
             document.querySelectorAll('.owner-link-btn').forEach((btn) => {
                 btn.addEventListener('click', () => {
                     const url = btn.dataset.url;
                     if (!url) return;
+
                     try {
                         if (csInterface) {
                             csInterface.openURLInDefaultBrowser(url);
@@ -2012,7 +2211,6 @@ document.addEventListener('DOMContentLoaded', async function () {
             });
 
             const checkUpdateBtn = document.getElementById('checkUpdateBtn');
-
             if (checkUpdateBtn) {
                 checkUpdateBtn.addEventListener('click', async () => {
                     if (!navigator.onLine) {
@@ -2032,7 +2230,6 @@ document.addEventListener('DOMContentLoaded', async function () {
                         if (!res.ok) throw new Error('update.json not found');
 
                         const remote = await res.json();
-
                         const localVersion =
                             localStorage.getItem('darkpanel_last_applied_version') ||
                             localStorage.getItem('darkpanel_installed_version') ||
@@ -2074,20 +2271,24 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         function switchPack(type) {
             if (currentPack === type) return;
+
             currentPack = type;
             localStorage.setItem('currentPack', type);
             updatePackUI();
             createPresets();
             selectedPreset = null;
+
             if (status) status.textContent = 'No items selected';
         }
 
         function switchTab(type) {
             if (currentView === type) return;
+
             currentView = type;
             allTab?.classList.toggle('active', type === 'all');
             favoritesTab?.classList.toggle('active', type === 'favorites');
             selectedPreset = null;
+
             if (status) status.textContent = 'No items selected';
             showPage(1);
         }
@@ -2132,8 +2333,6 @@ document.addEventListener('DOMContentLoaded', async function () {
             if (!packDropdown) return;
 
             const packBtn = packDropdown.querySelector('.pack-btn');
-            const label = packBtn.querySelector('.pack-label');
-            const arrow = packBtn.querySelector('.pack-arrow');
             const dropdown = packDropdown.querySelector('.pack-dropdown-content');
 
             if (!packBtn || !dropdown) return;
