@@ -160,6 +160,11 @@ document.addEventListener('DOMContentLoaded', async function () {
         nfuackpvJson: 'https://cdn.lordicon.com/nfuackpv.json',
         telegramWebp:
             'https://raw.githubusercontent.com/Cyber05CC/darkpanel/7b2e2124825e04e437cf98a6faea194649715be9/assets/icon/telegram.webp',
+
+        introVideoMp4:
+            'https://github.com/Cyber05CC/darkpanel/raw/3c23197379d0491aa3bc541c931926b04b504f02/assets/intro/intro.mp4',
+        introSfxMp3:
+            'https://github.com/Cyber05CC/darkpanel/raw/3c23197379d0491aa3bc541c931926b04b504f02/assets/intro/intro-sfx.mp3',
     };
 
     const ASSET_CACHE_VERSION = 'v2';
@@ -178,6 +183,9 @@ document.addEventListener('DOMContentLoaded', async function () {
         warimiocJson: BOOT_ASSETS.warimiocJson,
         nfuackpvJson: BOOT_ASSETS.nfuackpvJson,
         telegramWebp: BOOT_ASSETS.telegramWebp,
+
+        introVideoMp4: BOOT_ASSETS.introVideoMp4,
+        introSfxMp3: BOOT_ASSETS.introSfxMp3,
     };
 
     function normalizeSystemPath(path) {
@@ -466,6 +474,18 @@ document.addEventListener('DOMContentLoaded', async function () {
             BOOT_ASSETS.telegramWebp,
             'telegram.webp'
         );
+
+        DP_ASSETS.introVideoMp4 = await ensureCachedAsset(
+            'introVideoMp4',
+            BOOT_ASSETS.introVideoMp4,
+            'intro.mp4'
+        );
+
+        DP_ASSETS.introSfxMp3 = await ensureCachedAsset(
+            'introSfxMp3',
+            BOOT_ASSETS.introSfxMp3,
+            'intro-sfx.mp3'
+        );
     }
 
     try {
@@ -500,6 +520,98 @@ document.addEventListener('DOMContentLoaded', async function () {
         });
         document.querySelectorAll('.owner-dm img[alt="message"]').forEach((img) => {
             img.src = DP_ASSETS.telegramWebp;
+        });
+    }
+
+    async function playIntroOverlay() {
+        return new Promise((resolve) => {
+            const overlay = document.createElement('div');
+            overlay.id = 'dp-intro-overlay';
+            overlay.style.cssText = `
+            position: fixed;
+            inset: 0;
+            z-index: 1000001;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0.58);
+            backdrop-filter: blur(4px);
+            opacity: 0;
+            transition: opacity 0.35s ease;
+        `;
+
+            const video = document.createElement('video');
+            video.src = DP_ASSETS.introVideoMp4;
+            video.preload = 'auto';
+            video.playsInline = true;
+            video.autoplay = false;
+            video.muted = false;
+            video.controls = false;
+            video.style.cssText = `
+            width: min(320px, 72vw);
+            max-height: 72vh;
+            object-fit: contain;
+            border-radius: 18px;
+            box-shadow: 0 18px 60px rgba(0,0,0,0.45);
+            opacity: 0;
+            transform: scale(0.92);
+            transition: opacity 0.35s ease, transform 0.35s ease;
+            pointer-events: none;
+            background: transparent;
+        `;
+
+            const sfx = document.createElement('audio');
+            sfx.src = DP_ASSETS.introSfxMp3;
+            sfx.preload = 'auto';
+
+            let closed = false;
+
+            function closeIntro() {
+                if (closed) return;
+                closed = true;
+
+                overlay.style.opacity = '0';
+                video.style.opacity = '0';
+                video.style.transform = 'scale(0.95)';
+
+                setTimeout(() => {
+                    try {
+                        video.pause();
+                    } catch (_) {}
+                    try {
+                        sfx.pause();
+                    } catch (_) {}
+                    try {
+                        overlay.remove();
+                    } catch (_) {}
+                    resolve();
+                }, 350);
+            }
+
+            overlay.appendChild(video);
+            document.body.appendChild(overlay);
+
+            requestAnimationFrame(() => {
+                overlay.style.opacity = '1';
+                video.style.opacity = '1';
+                video.style.transform = 'scale(1)';
+            });
+
+            const playVideo = video.play().catch((e) => {
+                console.warn('Intro video play blocked:', e);
+            });
+
+            const playSfx = sfx.play().catch((e) => {
+                console.warn('Intro sfx play blocked:', e);
+            });
+
+            Promise.allSettled([playVideo, playSfx]).then(() => {
+                video.addEventListener('ended', closeIntro, { once: true });
+
+                setTimeout(() => {
+                    closeIntro();
+                }, 3200);
+            });
         });
     }
 
@@ -789,7 +901,12 @@ document.addEventListener('DOMContentLoaded', async function () {
 
                 localStorage.setItem(LOCAL_KEY, key);
                 msg.textContent = '✅ Activated successfully!';
-                await sleep(700);
+
+                // intro assetlarni yana bir marta aniq cache qilib olamiz
+                await bootstrapLocalAssets();
+
+                await playIntroOverlay();
+
                 overlay.remove();
                 startApp();
             };
