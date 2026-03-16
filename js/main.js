@@ -114,7 +114,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     let idleVideoEl = null;
     let idleAudioEl = null;
     let isIdleOverlayVisible = false;
-    const IDLE_TIMEOUT_MS = 5000;
+    const IDLE_TIMEOUT_MS = 600000;
 
     // ==================== OFFLINE ASSET CACHE ====================
     const BOOT_ASSETS = {
