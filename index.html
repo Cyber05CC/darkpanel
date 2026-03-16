@@ -4,7 +4,7 @@
         <meta charset="UTF-8" />
         <title>darkPanel</title>
         <link rel="stylesheet" href="./css/style.css" />
-        <script>
+        <!-- <script>
             document.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
                 return false;
@@ -30,7 +30,7 @@
                     return false;
                 }
             });
-        </script>
+        </script> -->
 
         <script src="./js/CSInterface.js"></script>
         <script src="./js/main.js"></script>
@@ -354,6 +354,7 @@
                         </div>
                         <button id="allTab" class="tab active">All</button>
                         <button id="favoritesTab" class="tab">Pin</button>
+                        <!-- <button id="captionTab" class="tab">Caption</button> -->
                         <div class="underline"></div>
                         <div class="grid-control">
                             <button class="grid-btn" data-cols="1">1x</button>
@@ -369,11 +370,47 @@
 
                 <div id="presets-container">
                     <div class="presets" id="presetList"></div>
-                    <!-- <div class="pagination">
-                        <button id="prevPage" disabled><span>❮</span></button>
-                        <span id="pageInfo">Page : </span>
-                        <button id="nextPage"><span>❯</span></button>
-                    </div> -->
+                </div>
+                <div id="caption-container" class="caption-container hidden">
+                    <div class="caption-panel">
+                        <div class="caption-action">
+                            <button id="captionGenerateBtn" class="caption-generate-btn">
+                                <svg
+                                    width="16"
+                                    height="16"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                >
+                                    <path
+                                        d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"
+                                    />
+                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                                    <line x1="12" y1="19" x2="12" y2="23" />
+                                    <line x1="8" y1="23" x2="16" y2="23" />
+                                </svg>
+                                <span>Generate Caption</span>
+                            </button>
+                        </div>
+                        <div id="caption-status" class="caption-status"></div>
+                        <div id="caption-editor" class="caption-editor hidden">
+                            <div class="caption-editor-label">Edit captions (tap to fix):</div>
+                            <div id="captionWordList" class="caption-word-list"></div>
+                            <button
+                                id="captionApplyEdited"
+                                class="caption-generate-btn"
+                                style="background: linear-gradient(135deg, #4ade80, #16a34a)"
+                            >
+                                Apply Captions
+                            </button>
+                        </div>
+                        <div class="caption-templates-label">Templates</div>
+                        <div class="caption-templates" id="captionTemplates"></div>
+                        <button id="captionRegenerateBtn" class="caption-regenerate-btn" disabled>
+                            Regenerate with Template
+                        </button>
+                    </div>
                 </div>
             </div>
         </main>
