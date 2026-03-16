@@ -144,7 +144,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         idleVideoMp4:
             'https://raw.githubusercontent.com/Cyber05CC/darkpanel/163bd6cf6ec71677f346e162f6b851bb4c5c5b24/assets/iddle/idle.mp4',
         idleSfxMp3:
-            'https://raw.githubusercontent.com/Cyber05CC/darkpanel/ce2450b38c4bcbf3e4ec3d5bce1570c9b9ba13be/assets/iddle/idle-sfx.mp3',
+            'https://raw.githubusercontent.com/Cyber05CC/darkpanel/163bd6cf6ec71677f346e162f6b851bb4c5c5b24/assets/iddle/idle-sfx.mp3',
     };
     const ASSET_CACHE_VERSION = 'v2';
     let DP_ASSETS = Object.assign({}, BOOT_ASSETS);
