@@ -114,7 +114,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     let idleVideoEl = null;
     let idleAudioEl = null;
     let isIdleOverlayVisible = false;
-    const IDLE_TIMEOUT_MS = 600000;
+    const IDLE_TIMEOUT_MS = 5000;
 
     // ==================== OFFLINE ASSET CACHE ====================
     const BOOT_ASSETS = {
@@ -142,7 +142,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         introSfxMp3:
             'https://github.com/Cyber05CC/darkpanel/raw/3c23197379d0491aa3bc541c931926b04b504f02/assets/intro/intro-sfx.mp3',
         idleVideoMp4:
-            'https://raw.githubusercontent.com/Cyber05CC/darkpanel/ce2450b38c4bcbf3e4ec3d5bce1570c9b9ba13be/assets/iddle/idle.mp4',
+            'https://raw.githubusercontent.com/Cyber05CC/darkpanel/163bd6cf6ec71677f346e162f6b851bb4c5c5b24/assets/iddle/idle.mp4',
         idleSfxMp3:
             'https://raw.githubusercontent.com/Cyber05CC/darkpanel/ce2450b38c4bcbf3e4ec3d5bce1570c9b9ba13be/assets/iddle/idle-sfx.mp3',
     };
