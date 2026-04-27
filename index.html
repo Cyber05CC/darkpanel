@@ -433,26 +433,19 @@
                 if (curveBtn) {
                     curveBtn.addEventListener('click', function () {
                         if (!isGraphView) {
-                            // Graph viewga o'tish
+                            // Graph viewga o'tish — barcha o'zgarishlar bir freym ichida
                             isGraphView = true;
 
-                            // Presets container va tabs ni yashirish
                             presetsContainer.classList.add('hidden');
                             tabs.classList.add('hidden');
                             packDropdown.classList.add('hidden');
-
-                            // Add tugmasini yashirish
                             addButton.classList.add('add-hidden');
 
-                            // Curve tugmasini kengaytirish va Pack ga o'zgartirish
                             curveBtn.textContent = 'Pack';
                             curveBtn.classList.remove('curve-contracted');
                             curveBtn.classList.add('curve-expanded');
 
-                            // Graph viewni ko'rsatish
-                            setTimeout(() => {
-                                graphView.classList.add('active');
-                            }, 10);
+                            graphView.classList.add('active');
 
                             // Graph iframe yuklanganda back buttonni yashirish
                             if (graphIframe) {
@@ -461,7 +454,6 @@
                                         const iframeWindow = graphIframe.contentWindow;
                                         const iframeDocument = iframeWindow.document;
 
-                                        // Back buttonni yashirish
                                         const backButton =
                                             iframeDocument.getElementById('back-button');
                                         if (backButton) {
@@ -473,25 +465,15 @@
                                 });
                             }
                         } else {
-                            // Presets viewga qaytish
+                            // Presets viewga qaytish — bir freymda hammasi
                             isGraphView = false;
 
-                            // Graph viewni yashirish
                             graphView.classList.remove('active');
+                            presetsContainer.classList.remove('hidden');
+                            tabs.classList.remove('hidden');
+                            packDropdown.classList.remove('hidden');
+                            addButton.classList.remove('add-hidden');
 
-                            // Presets container va tabs ni ko'rsatish
-                            setTimeout(() => {
-                                presetsContainer.classList.remove('hidden');
-                                tabs.classList.remove('hidden');
-                                packDropdown.classList.remove('hidden');
-                            }, 150);
-
-                            // Add tugmasini ko'rsatish
-                            setTimeout(() => {
-                                addButton.classList.remove('add-hidden');
-                            }, 150);
-
-                            // Pack tugmasini kichraytirish va Curve ga qaytarish
                             curveBtn.textContent = 'Curve';
                             curveBtn.classList.remove('curve-expanded');
                             curveBtn.classList.add('curve-contracted');
@@ -524,21 +506,16 @@
                 // Graph iframe ichidagi back message
                 window.addEventListener('message', function (event) {
                     if (event.data === 'back-to-presets') {
-                        // Presets viewga qaytish
                         isGraphView = false;
                         graphView.classList.remove('active');
+                        presetsContainer.classList.remove('hidden');
+                        tabs.classList.remove('hidden');
+                        packDropdown.classList.remove('hidden');
+                        addButton.classList.remove('add-hidden');
 
-                        setTimeout(() => {
-                            presetsContainer.classList.remove('hidden');
-                            tabs.classList.remove('hidden');
-                            packDropdown.classList.remove('hidden');
-                            addButton.classList.remove('add-hidden');
-
-                            // Pack tugmasini kichraytirish va Curve ga qaytarish
-                            curveBtn.textContent = 'Curve';
-                            curveBtn.classList.remove('curve-expanded');
-                            curveBtn.classList.add('curve-contracted');
-                        }, 150);
+                        curveBtn.textContent = 'Curve';
+                        curveBtn.classList.remove('curve-expanded');
+                        curveBtn.classList.add('curve-contracted');
                     }
                 });
 

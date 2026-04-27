@@ -105,10 +105,13 @@ header,
     display: block;
     position: relative;
     padding-right: 4px;
+    opacity: 1;
+    transition: opacity 0.32s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 #presets-container.hidden {
-    display: none;
+    opacity: 0;
+    pointer-events: none;
 }
 
 #presets-container::-webkit-scrollbar {
@@ -427,26 +430,30 @@ header,
     padding-bottom: 0.4rem !important;
     border-bottom: 1px solid rgba(255, 255, 255, 0.07);
     position: relative;
-    transition: opacity 0.15s ease;
     opacity: 1;
-    height: auto;
+    max-height: 200px;
     overflow: visible;
+    transition:
+        opacity 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+        max-height 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+        margin 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+        padding 0.28s cubic-bezier(0.22, 1, 0.36, 1) !important;
 }
-
 .tabs.hidden {
     opacity: 0;
-    height: 0;
+    max-height: 0;
+    margin: 0 !important;
+    padding: 0 !important;
+    pointer-events: none;
     overflow: hidden;
-    margin: 0;
-    padding: 0;
 }
-.tabs,
 .pack-dropdown {
-    transition: opacity 0.15s ease !important;
+    transition: opacity 0.28s cubic-bezier(0.22, 1, 0.36, 1) !important;
 }
 .pack-dropdown.hidden {
     opacity: 0;
     visibility: hidden;
+    pointer-events: none;
 }
 
 .tab {
@@ -1169,19 +1176,28 @@ header,
     border-radius: 8px;
     overflow: hidden;
     transition:
-        opacity 0.15s ease,
-        visibility 0.15s ease;
-    display: none;
+        opacity 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+        transform 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+        visibility 0s 0.32s;
+    transform: scale(0.985) translateY(6px);
+    pointer-events: none;
+    display: block;
     width: 100%;
     height: calc(100vh - 120px);
     flex: 1;
     min-height: 0;
+    will-change: opacity, transform;
 }
 
 #graph-view.active {
     opacity: 1;
     visibility: visible;
-    display: block;
+    transform: scale(1) translateY(0);
+    pointer-events: auto;
+    transition:
+        opacity 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+        transform 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+        visibility 0s 0s;
 }
 #graph-iframe {
     width: 100%;
@@ -1190,44 +1206,39 @@ header,
 }
 
 /* ================== CURVE ANIMATION ================== */
+#apply,
+#curve-btn {
+    transition:
+        opacity 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+        transform 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+        min-width 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+        padding 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+        background 0.28s ease,
+        color 0.28s ease,
+        box-shadow 0.28s ease;
+    transform: scale(1);
+}
+
 .add-hidden {
-    display: none !important;
+    opacity: 0 !important;
+    transform: scale(0.9) !important;
+    pointer-events: none !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+    overflow: hidden !important;
 }
 
 .curve-expanded {
     min-width: 120px;
     padding: 0.4rem 2rem !important;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    animation: expandWidth 0.3s ease-out;
 }
 
 .curve-contracted {
     min-width: 70px;
     padding: 0.4rem 0.7rem !important;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    animation: contractWidth 0.3s ease-out;
-}
-
-@keyframes expandWidth {
-    from {
-        min-width: 70px;
-        padding: 0.4rem 0.7rem !important;
-    }
-    to {
-        min-width: 120px;
-        padding: 0.4rem 2rem !important;
-    }
-}
-
-@keyframes contractWidth {
-    from {
-        min-width: 120px;
-        padding: 0.4rem 2rem !important;
-    }
-    to {
-        min-width: 70px;
-        padding: 0.4rem 0.7rem !important;
-    }
 }
 
 /* ================== PERFORMANCE MODE ================== */
@@ -1255,7 +1266,7 @@ header,
 .chumolar #chumo-2 {
     border-radius: 5px 0;
 }
-.niger {
+.dp-brand {
     font-family: cursive;
 }
 

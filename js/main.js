@@ -1,8 +1,6 @@
 document.addEventListener('keydown', (e) => {
     if (
-        (e.ctrlKey && e.shiftKey && e.key === 'I') ||
-        (e.ctrlKey && e.shiftKey && e.key === 'J') ||
-        (e.ctrlKey && e.key === 'F12') ||
+        (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J')) ||
         e.key === 'F12'
     ) {
         e.preventDefault();
@@ -12,7 +10,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 document.addEventListener('DOMContentLoaded', async function () {
-    ('use strict');
+    'use strict';
 
     // ==================== SIMPLE PERFORMANCE MANAGER ====================
     class SimplePerformanceManager {
@@ -270,10 +268,10 @@ document.addEventListener('DOMContentLoaded', async function () {
         for (const [key, file] of Object.entries(map)) {
             DP_ASSETS[key] = await ensureCachedAsset(key, BOOT_ASSETS[key], file);
         }
+        try {
+            localStorage.setItem('dp_cached_assets', JSON.stringify(DP_ASSETS));
+        } catch (e) {}
     }
-    try {
-        localStorage.setItem('dp_cached_assets', JSON.stringify(DP_ASSETS));
-    } catch (e) {}
 
     function patchExistingStaticImgs() {
         document
@@ -510,12 +508,29 @@ document.addEventListener('DOMContentLoaded', async function () {
                 if (p) return 'cep_' + String(p);
             }
         } catch (_) {}
-        return (
-            'web_' +
-            btoa(
-                (navigator.userAgent || '') + '|' + (screen.width || 0) + 'x' + (screen.height || 0)
-            )
-        );
+        const STORAGE_KEY = 'dp_web_device_id';
+        try {
+            const existing = localStorage.getItem(STORAGE_KEY);
+            if (existing) return existing;
+        } catch (_) {}
+        let token = '';
+        try {
+            if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+                token = crypto.randomUUID();
+            } else if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+                const bytes = new Uint8Array(16);
+                crypto.getRandomValues(bytes);
+                token = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+            }
+        } catch (_) {}
+        if (!token) {
+            token = Date.now().toString(36) + Math.random().toString(36).slice(2);
+        }
+        const id = 'web_' + token;
+        try {
+            localStorage.setItem(STORAGE_KEY, id);
+        } catch (_) {}
+        return id;
     }
     const deviceId = await getDeviceId();
     async function apiPost(path, body) {
@@ -545,18 +560,8 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     // ==================== LICENSE ====================
     const LOCAL_KEY = 'darkpanel_license_key';
-    const LICENSE_CACHE = 'darkpanel_license_cache';
     async function checkKey(key) {
         const { data } = await apiPost('/license/check', { key, deviceId });
-        if (data?.valid || data?.ok)
-            localStorage.setItem(
-                LICENSE_CACHE,
-                JSON.stringify({
-                    ts: Date.now(),
-                    type: data.type || 'trial',
-                    expiresAt: data.expiresAt || null,
-                })
-            );
         return data;
     }
     async function activateKey(key) {
@@ -592,7 +597,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         overlay.id = 'dp-activation';
         overlay.style.cssText =
             'position:fixed;inset:0;background:#0f0f10;display:flex;align-items:center;justify-content:center;z-index:999999;color:#fff;font-family:Inter,system-ui,Arial,sans-serif;';
-        overlay.innerHTML = `<div style="width:min(450px,90vw);border:1px solid #2a2a2a;border-radius:14px;background:linear-gradient(180deg,#141416,#0f0f10)"><div style="padding:22px 20px" class="dalbayop"><div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><div style="width:32px;height:32px;border-radius:8px;background:#3537ff;display:flex;align-items:center;justify-content:center"><img class="activate-lock" src="${DP_ASSETS.lockWebp}" alt="lock"/></div><h2 style="margin:0;font-size:18px;font-weight:700">darkPanel Activation</h2></div><p style="margin:6px 0 14px;color:#bdbdbd;font-size:12px">Please enter your key.</p><input id="dp-key" placeholder="XXXX-XXXX-XXXX" spellcheck="false" style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid #2b2b2b;background:#131318;color:#eaeaea;outline:none;font-size:13px"/><div style="display:flex;gap:10px;margin-top:12px"><button id="dp-activate" style="flex:1;padding:10px 12px;border:0;border-radius:10px;background:#4a6cff;color:#fff;font-weight:600;cursor:pointer">Activate</button></div><div id="dp-msg" style="margin-top:10px;color:#9ca3af;font-size:12px;min-height:16px"></div></div><div class="chumolar"><img style="margin-top:7.5px" id="chumo-1" src="${DP_ASSETS.chumo1Png}" alt="chumo1"/><h1 class="niger">darkPanel</h1><img id="chumo-2" src="${DP_ASSETS.chumo2Png}" alt="chumo2"/></div></div>`;
+        overlay.innerHTML = `<div style="width:min(450px,90vw);border:1px solid #2a2a2a;border-radius:14px;background:linear-gradient(180deg,#141416,#0f0f10)"><div style="padding:22px 20px" class="dalbayop"><div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><div style="width:32px;height:32px;border-radius:8px;background:#3537ff;display:flex;align-items:center;justify-content:center"><img class="activate-lock" src="${DP_ASSETS.lockWebp}" alt="lock"/></div><h2 style="margin:0;font-size:18px;font-weight:700">darkPanel Activation</h2></div><p style="margin:6px 0 14px;color:#bdbdbd;font-size:12px">Please enter your key.</p><input id="dp-key" placeholder="XXXX-XXXX-XXXX" spellcheck="false" style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid #2b2b2b;background:#131318;color:#eaeaea;outline:none;font-size:13px"/><div style="display:flex;gap:10px;margin-top:12px"><button id="dp-activate" style="flex:1;padding:10px 12px;border:0;border-radius:10px;background:#4a6cff;color:#fff;font-weight:600;cursor:pointer">Activate</button></div><div id="dp-msg" style="margin-top:10px;color:#9ca3af;font-size:12px;min-height:16px"></div></div><div class="chumolar"><img style="margin-top:7.5px" id="chumo-1" src="${DP_ASSETS.chumo1Png}" alt="chumo1"/><h1 class="dp-brand">darkPanel</h1><img id="chumo-2" src="${DP_ASSETS.chumo2Png}" alt="chumo2"/></div></div>`;
         document.body.appendChild(overlay);
         document.getElementById('dp-activate').onclick = async () => {
             const el = document.getElementById('dp-key'),
@@ -660,20 +665,6 @@ document.addEventListener('DOMContentLoaded', async function () {
         window.addEventListener('online', go, { once: true });
     }
 
-    const hasKey = !!localStorage.getItem(LOCAL_KEY);
-    if (!navigator.onLine) {
-        if (hasKey) {
-            showOfflineRibbon();
-            startApp();
-        } else showOfflineNeedsNetOverlay();
-        return;
-    }
-    const valid = await validateStoredKey();
-    if (!valid) {
-        renderActivationUI();
-        return;
-    }
-
     // ==================== INFO MODAL ====================
     const infoModal = document.getElementById('dp-info-modal');
     const closeInfoBtn = infoModal?.querySelector('.close-info');
@@ -732,7 +723,7 @@ document.addEventListener('DOMContentLoaded', async function () {
             'v' +
             (localStorage.getItem('darkpanel_last_applied_version') ||
                 localStorage.getItem('darkpanel_installed_version') ||
-                '1.0');
+                '1.0.0');
         document.getElementById('modal-env').textContent = csInterface
             ? 'After Effects'
             : 'Browser';
@@ -858,6 +849,20 @@ document.addEventListener('DOMContentLoaded', async function () {
     }
 
     let presets = [];
+
+    const hasKey = !!localStorage.getItem(LOCAL_KEY);
+    if (!navigator.onLine) {
+        if (hasKey) {
+            showOfflineRibbon();
+            startApp();
+        } else showOfflineNeedsNetOverlay();
+        return;
+    }
+    const valid = await validateStoredKey();
+    if (!valid) {
+        renderActivationUI();
+        return;
+    }
     startApp();
 
     // ==================== START APP ====================
@@ -893,12 +898,55 @@ document.addEventListener('DOMContentLoaded', async function () {
             totalPages = 1,
             currentView = 'all';
         let currentPack = localStorage.getItem('currentPack') || 'text';
-        let favorites = JSON.parse(localStorage.getItem('favorites') || '[]');
+        let favorites = (() => {
+            try {
+                const parsed = JSON.parse(localStorage.getItem('favorites') || '[]');
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (e) {
+                return [];
+            }
+        })();
+
+        function dedupeNames(list) {
+            const seen = {};
+            return (Array.isArray(list) ? list : []).filter((item) => {
+                const value = String(item || '').trim();
+                if (!value) return false;
+                const key = value.toLowerCase();
+                if (seen[key]) return false;
+                seen[key] = true;
+                return true;
+            });
+        }
+
+        function isEffectPresetFile(fileName) {
+            return /^effect_\d+\.(aep|ffx)$/i.test(String(fileName || '').trim());
+        }
+
+        function getPresetAliases(fileName) {
+            const normalized = String(fileName || '').trim();
+            if (!normalized) return [];
+            if (!isEffectPresetFile(normalized)) return [normalized];
+            const base = normalized.replace(/\.(aep|ffx)$/i, '');
+            return dedupeNames([`${base}.ffx`, `${base}.aep`]);
+        }
+
+        function persistFavorites() {
+            favorites = dedupeNames(favorites);
+            localStorage.setItem('favorites', JSON.stringify(favorites));
+        }
+
+        function isFavoritePreset(fileName) {
+            const aliases = getPresetAliases(fileName).map((item) => item.toLowerCase());
+            return favorites.some(
+                (fav) => aliases.indexOf(String(fav || '').trim().toLowerCase()) !== -1
+            );
+        }
+
+        persistFavorites();
 
         setupConnectionWatcher();
         await autoUpdateIfNeeded();
-        await bootstrapLocalAssets();
-        patchExistingStaticImgs();
         lazyLoader = new ImprovedLazyLoader();
         init();
         setupPackDropdown();
@@ -994,7 +1042,10 @@ document.addEventListener('DOMContentLoaded', async function () {
             if (!csInterface) return false;
             const extRoot = normalizeSystemPath(csInterface.getSystemPath(SystemPath.EXTENSION));
             for (const [rel, info] of Object.entries(files || {})) {
-                if (!SUPPORTED_TEXT_FILES.includes(rel)) continue;
+                if (!SUPPORTED_TEXT_FILES.includes(rel)) {
+                    console.warn('autoUpdate: unsupported file in manifest, skipping hard install:', rel);
+                    return false;
+                }
                 const text = await (
                     await fetch(info.url + '?v=' + Date.now(), { cache: 'no-store' })
                 ).text();
@@ -1106,10 +1157,10 @@ document.addEventListener('DOMContentLoaded', async function () {
                 let realNum, ext;
                 if (typeof entry === 'object') {
                     realNum = entry.n;
-                    ext = entry.ext || (currentPack === 'effect' ? '.aep' : '.ffx');
+                    ext = entry.ext || '.ffx';
                 } else {
                     realNum = entry;
-                    ext = currentPack === 'effect' ? '.aep' : '.ffx';
+                    ext = '.ffx';
                 }
                 const fileName = `${currentPack}_${realNum}${ext}`;
                 preset.dataset.file = fileName;
@@ -1154,21 +1205,24 @@ document.addEventListener('DOMContentLoaded', async function () {
                 const f = p.dataset.file,
                     cb = p.querySelector('.favorite-check');
                 if (!cb) return;
-                cb.checked = favorites.includes(f);
+                cb.checked = isFavoritePreset(f);
                 cb.addEventListener('change', function () {
                     toggleFavorite(f, this.checked);
                 });
             });
         }
         function toggleFavorite(file, isFav) {
-            if (isFav && !favorites.includes(file)) favorites.push(file);
-            else if (!isFav) favorites = favorites.filter((f) => f !== file);
-            localStorage.setItem('favorites', JSON.stringify(favorites));
+            const aliases = getPresetAliases(file).map((item) => item.toLowerCase());
+            favorites = favorites.filter(
+                (fav) => aliases.indexOf(String(fav || '').trim().toLowerCase()) === -1
+            );
+            if (isFav) favorites.push(file);
+            persistFavorites();
             if (currentView === 'favorites') showPage(1);
         }
         function filterPresets() {
             return Array.from(presets).filter(
-                (p) => currentView === 'all' || favorites.includes(p.dataset.file)
+                (p) => currentView === 'all' || isFavoritePreset(p.dataset.file)
             );
         }
         function showPage(page) {
@@ -1236,21 +1290,66 @@ document.addEventListener('DOMContentLoaded', async function () {
             });
         }
 
+        function getPresetFetchCandidates(fileName) {
+            const normalized = String(fileName || '').trim();
+            if (!normalized) return [];
+            if (!isEffectPresetFile(normalized)) return [normalized];
+            const base = normalized.replace(/\.(aep|ffx)$/i, '');
+            // Importing AEP presets can break AE's undo chain, so we prefer the FFX twin first.
+            return dedupeNames([
+                `${base}.ffx`,
+                /\.ffx$/i.test(normalized) ? `${base}.aep` : normalized,
+            ]);
+        }
+
+        async function fetchPresetAsset(fileName) {
+            const candidates = getPresetFetchCandidates(fileName);
+            for (const candidate of candidates) {
+                const res = await fetch(`${GITHUB_RAW}/presets/${candidate}`, {
+                    cache: 'no-store',
+                });
+                if (res.ok) {
+                    return { fileName: candidate, blob: await res.blob() };
+                }
+            }
+            throw new Error('Preset not found');
+        }
+
+        async function tryApplyLocalPreset(fileName) {
+            if (!csInterface) return '';
+            return String((await evalES(`applyPreset("${escES(fileName)}")`)) || '');
+        }
+
         // ==================== APPLY PRESET ====================
         async function applyPreset() {
             if (!selectedPreset) {
                 showMiniToast('Select a preset first!');
                 return;
             }
-            const isAEP = selectedPreset.toLowerCase().endsWith('.aep'),
-                ext = isAEP ? '.aep' : '.ffx';
             try {
-                const res = await fetch(`${GITHUB_RAW}/presets/${selectedPreset}`, {
-                    cache: 'no-store',
-                });
-                if (!res.ok) throw new Error('Preset not found');
-                const blob = await res.blob(),
-                    base64 = await new Promise((r, j) => {
+                const candidates = getPresetFetchCandidates(selectedPreset);
+                for (const candidate of candidates) {
+                    if (!/\.ffx$/i.test(candidate)) continue;
+                    const localResult = await tryApplyLocalPreset(candidate);
+                    if (localResult.indexOf('Successfully applied') !== -1) {
+                        showMiniToast('Done');
+                        return;
+                    }
+                    if (
+                        localResult &&
+                        localResult.indexOf('Preset file not found') === -1 &&
+                        localResult.indexOf('Cannot locate extension folder') === -1
+                    ) {
+                        showMiniToast(localResult.replace(/^Error:\s*/, ''));
+                        return;
+                    }
+                }
+
+                const { fileName: resolvedPreset, blob } = await fetchPresetAsset(selectedPreset);
+                const isAEP = resolvedPreset.toLowerCase().endsWith('.aep'),
+                    ext = isAEP ? '.aep' : '.ffx';
+                const base64 =
+                    await new Promise((r, j) => {
                         const rd = new FileReader();
                         rd.onload = () => r(String(rd.result).split(',')[1]);
                         rd.onerror = j;
@@ -1273,13 +1372,17 @@ document.addEventListener('DOMContentLoaded', async function () {
                                 )
                             );
                         if (!isAEP) {
+                            const presetKind = /^text_/i.test(resolvedPreset) ? 'text' : 'effect';
                             csInterface.evalScript(
-                                `(function(){var res="Success";app.beginUndoGroup("Apply Preset");try{var f=new File("${ep}");if(!f.exists)throw new Error("Missing");var c=app.project.activeItem;if(!c)throw new Error("No Comp");var s=c.selectedLayers;for(var i=0;i<s.length;i++)s[i].applyPreset(f);}catch(e){res="Error: "+e;}finally{app.endUndoGroup();}return res;})()`,
+                                `applyPresetFromFilePath("${ep}", ${
+                                    presetKind === 'effect' ? 'true' : 'false'
+                                }, "${presetKind}")`,
                                 (r) => {
+                                    const out = String(r || '');
                                     showMiniToast(
-                                        r.indexOf('Success') !== -1
+                                        out.indexOf('Successfully applied') !== -1
                                             ? 'Done'
-                                            : r.replace('Error: ', '')
+                                            : out.replace('Error: ', '') || 'Apply failed'
                                     );
                                 }
                             );
@@ -1287,24 +1390,30 @@ document.addEventListener('DOMContentLoaded', async function () {
                             // AEP apply logic (same as before - abbreviated for space)
                             const evalP = (s) => new Promise((r) => csInterface.evalScript(s, r));
                             try {
-                                const r1 = await evalP(
-                                    `(function(){try{var f=new File("${ep}");if(!f.exists)return"ERR:File missing";var comp=app.project.activeItem;if(!comp||!(comp instanceof CompItem))return"ERR:No Comp";var sel=comp.selectedLayers;if(sel.length===0)return"ERR:No Layer";for(var c=app.project.numItems;c>=1;c--){try{var itm=app.project.item(c);if(itm.name==="dp_temp.aep"||itm.name==="dp_temp")itm.remove();}catch(e){}}var io=new ImportOptions(f);var imported=app.project.importFile(io);var srcComp=null;if(imported instanceof CompItem)srcComp=imported;else if(imported instanceof FolderItem){for(var i=1;i<=imported.numItems;i++){if(imported.item(i) instanceof CompItem){srcComp=imported.item(i);break;}}}if(!srcComp||srcComp.numLayers===0)return"ERR:Bad AEP";var srcLayer=srcComp.layer(1);return"OK:"+srcComp.id+":"+sel[0].index+":"+(srcLayer.adjustmentLayer?1:0)+":"+(sel[0].source?1:0)+":"+imported.id;}catch(e){return"ERR:"+e;}})();`
+                                const r1 = String(
+                                    (await evalP(
+                                        `(function(){try{var f=new File("${ep}");if(!f.exists)return"ERR:File missing";var comp=app.project.activeItem;if(!comp||!(comp instanceof CompItem))return"ERR:No Comp";var sel=comp.selectedLayers;if(sel.length===0)return"ERR:No Layer";for(var c=app.project.numItems;c>=1;c--){try{var itm=app.project.item(c);if(itm.name==="dp_temp.aep"||itm.name==="dp_temp")itm.remove();}catch(e){}}var io=new ImportOptions(f);var imported=app.project.importFile(io);var srcComp=null;if(imported instanceof CompItem)srcComp=imported;else if(imported instanceof FolderItem){for(var i=1;i<=imported.numItems;i++){if(imported.item(i) instanceof CompItem){srcComp=imported.item(i);break;}}}if(!srcComp||srcComp.numLayers===0)return"ERR:Bad AEP";var srcLayer=srcComp.layer(1);return"OK:"+srcComp.id+":"+sel[0].index+":"+(srcLayer.adjustmentLayer?1:0)+":"+(sel[0].source?1:0)+":"+imported.id;}catch(e){return"ERR:"+e;}})();`
+                                    )) || ''
                                 );
-                                if (r1.indexOf('ERR') === 0)
-                                    throw new Error(r1.replace('ERR:', ''));
+                                if (!r1 || r1.indexOf('ERR') === 0)
+                                    throw new Error(
+                                        (r1 || 'ERR:No response').replace('ERR:', '')
+                                    );
                                 const p = r1.split(':'),
                                     srcId = p[1],
                                     tIdx = p[2],
                                     isAdj = p[3] === '1',
                                     hasSource = p[4] === '1',
                                     importedId = p[5];
-                                const r2 = await evalP(
-                                    `(function(){var u=false;try{var comp=app.project.activeItem;if(!comp)return"Error";var srcComp=null;for(var i=1;i<=app.project.numItems;i++){if(app.project.item(i).id==${srcId}){srcComp=app.project.item(i);break;}}if(!srcComp)return"Error";var imp=null;for(var j=1;j<=app.project.numItems;j++){if(app.project.item(j).id==${importedId}){imp=app.project.item(j);break;}}var tl=comp.layer(${tIdx});if(!tl)return"Error";app.beginUndoGroup("Apply Smart Preset");u=true;var dpF=null;for(var k=1;k<=app.project.numItems;k++){if(app.project.item(k) instanceof FolderItem&&app.project.item(k).name==="darkPanel"){dpF=app.project.item(k);break;}}if(!dpF)dpF=app.project.items.addFolder("darkPanel");if(imp)imp.parentFolder=dpF;try{srcComp.parentFolder=dpF;}catch(e){}if(${isAdj}){var sl=srcComp.layer(1);var se=sl.property("ADBE Effect Parade");var al=comp.layers.addSolid([1,1,1],srcComp.name||"Adjustment",comp.width,comp.height,1,comp.duration);al.adjustmentLayer=true;if(se&&se.numProperties>0){var ae=al.property("ADBE Effect Parade");for(var ef=1;ef<=se.numProperties;ef++){try{var ne=ae.addProperty(se.property(ef).matchName);}catch(e){}}}al.startTime=tl.startTime;al.inPoint=tl.inPoint;al.outPoint=tl.outPoint;if(al.index>tl.index)al.moveBefore(comp.layer(tl.index));for(var d=1;d<=comp.numLayers;d++)comp.layer(d).selected=false;al.selected=true;}else if(${hasSource}){var nl=comp.layers.add(srcComp);nl.collapseTransformation=true;nl.startTime=tl.startTime;nl.inPoint=tl.inPoint;nl.outPoint=tl.outPoint;if(tl.index>1)nl.moveAfter(comp.layer(tl.index));tl.remove();for(var dd=1;dd<=comp.numLayers;dd++)comp.layer(dd).selected=false;nl.selected=true;}else{var nl2=comp.layers.add(srcComp);nl2.startTime=comp.time;nl2.collapseTransformation=true;for(var d2=1;d2<=comp.numLayers;d2++)comp.layer(d2).selected=false;nl2.selected=true;}try{new File("${ep}").remove();}catch(e){}app.endUndoGroup();u=false;return"Success";}catch(err){if(u)try{app.endUndoGroup();}catch(x){}return"Error:"+err;}})();`
+                                const r2 = String(
+                                    (await evalP(
+                                        `(function(){var u=false;try{var comp=app.project.activeItem;if(!comp)return"Error";var srcComp=null;for(var i=1;i<=app.project.numItems;i++){if(app.project.item(i).id==${srcId}){srcComp=app.project.item(i);break;}}if(!srcComp)return"Error";var imp=null;for(var j=1;j<=app.project.numItems;j++){if(app.project.item(j).id==${importedId}){imp=app.project.item(j);break;}}var tl=comp.layer(${tIdx});if(!tl)return"Error";app.beginUndoGroup("Apply Smart Preset");u=true;var dpF=null;for(var k=1;k<=app.project.numItems;k++){if(app.project.item(k) instanceof FolderItem&&app.project.item(k).name==="darkPanel"){dpF=app.project.item(k);break;}}if(!dpF)dpF=app.project.items.addFolder("darkPanel");if(imp)imp.parentFolder=dpF;try{srcComp.parentFolder=dpF;}catch(e){}if(${isAdj}){var sl=srcComp.layer(1);var se=sl.property("ADBE Effect Parade");var al=comp.layers.addSolid([1,1,1],srcComp.name||"Adjustment",comp.width,comp.height,1,comp.duration);al.adjustmentLayer=true;if(se&&se.numProperties>0){var ae=al.property("ADBE Effect Parade");for(var ef=1;ef<=se.numProperties;ef++){try{var ne=ae.addProperty(se.property(ef).matchName);}catch(e){}}}al.startTime=tl.startTime;al.inPoint=tl.inPoint;al.outPoint=tl.outPoint;if(al.index>tl.index)al.moveBefore(comp.layer(tl.index));for(var d=1;d<=comp.numLayers;d++)comp.layer(d).selected=false;al.selected=true;}else if(${hasSource}){var nl=comp.layers.add(srcComp);nl.collapseTransformation=true;nl.startTime=tl.startTime;nl.inPoint=tl.inPoint;nl.outPoint=tl.outPoint;if(tl.index>1)nl.moveAfter(comp.layer(tl.index));tl.remove();for(var dd=1;dd<=comp.numLayers;dd++)comp.layer(dd).selected=false;nl.selected=true;}else{var nl2=comp.layers.add(srcComp);nl2.startTime=comp.time;nl2.collapseTransformation=true;for(var d2=1;d2<=comp.numLayers;d2++)comp.layer(d2).selected=false;nl2.selected=true;}try{new File("${ep}").remove();}catch(e){}app.endUndoGroup();u=false;return"Success";}catch(err){if(u)try{app.endUndoGroup();}catch(x){}return"Error:"+err;}})();`
+                                    )) || ''
                                 );
                                 showMiniToast(
                                     r2.indexOf('Success') !== -1
                                         ? 'EFFECTS ADDED'
-                                        : r2.replace('Error:', '')
+                                        : r2.replace('Error:', '') || 'Apply failed'
                                 );
                             } catch (e) {
                                 showMiniToast(String(e.message || e).replace('Error: ', ''));
@@ -1674,14 +1783,25 @@ document.addEventListener('DOMContentLoaded', async function () {
         }
 
         async function getGroqKey() {
-            const cached = localStorage.getItem('dp_groq_key');
-            if (cached) return cached;
+            const GROQ_TTL_MS = 60 * 60 * 1000;
+            try {
+                const raw = localStorage.getItem('dp_groq_key');
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (parsed?.key && Date.now() - parsed.ts < GROQ_TTL_MS) return parsed.key;
+                }
+            } catch (e) {}
             try {
                 const res = await fetch(API_BASE.replace('/api', '') + '/api/caption/key');
                 if (res.ok) {
                     const d = await res.json();
                     if (d.key) {
-                        localStorage.setItem('dp_groq_key', d.key);
+                        try {
+                            localStorage.setItem(
+                                'dp_groq_key',
+                                JSON.stringify({ key: d.key, ts: Date.now() })
+                            );
+                        } catch (e) {}
                         return d.key;
                     }
                 }
@@ -1748,10 +1868,8 @@ document.addEventListener('DOMContentLoaded', async function () {
                 // Har bir o'zgargan so'zni AE da topib yangilash
                 for (const ch of changes) {
                     const targetTime = startOffset + ch.start;
-                    const escaped = ch.newWord
-                        .replace(/\\/g, '\\\\')
-                        .replace(/'/g, "\\'")
-                        .replace(/"/g, '\\"');
+                    const wordLiteral = JSON.stringify(ch.newWord);
+                    const nameLiteral = JSON.stringify('Cap: ' + ch.newWord);
                     await new Promise((r) =>
                         csInterface.evalScript(
                             `(function(){
@@ -1765,9 +1883,9 @@ document.addEventListener('DOMContentLoaded', async function () {
                         if (Math.abs(l.inPoint - ${targetTime}) < 0.15) {
                             var tp = l.property('ADBE Text Properties').property('ADBE Text Document');
                             var td = tp.value;
-                            td.text = '${escaped}';
+                            td.text = ${wordLiteral};
                             tp.setValue(td);
-                            l.name = 'Cap: ${escaped}';
+                            l.name = ${nameLiteral};
                             break;
                         }
                     }
