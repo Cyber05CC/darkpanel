@@ -350,6 +350,7 @@
                             <div class="pack-dropdown-content">
                                 <a href="#" id="textPackBtn">Text</a>
                                 <a href="#" id="effectPackBtn">Effect</a>
+                                <a href="#" id="animationPackBtn">Animation</a>
                             </div>
                         </div>
                         <button id="allTab" class="tab active">All</button>
@@ -370,6 +371,28 @@
 
                 <div id="presets-container">
                     <div class="presets" id="presetList"></div>
+                </div>
+
+                <div id="anim-tune-panel" class="anim-tune-panel hidden" aria-hidden="true">
+                    <div class="anim-tune-card">
+                        <div class="anim-tune-head">
+                            <div class="anim-tune-title">
+                                <span id="animTuneName">Animation</span>
+                                <span id="animTuneType" class="anim-tune-badge">EXPR</span>
+                            </div>
+                            <button id="animTuneClose" class="anim-tune-close" aria-label="Close">×</button>
+                        </div>
+                        <div id="animTuneTarget" class="anim-tune-target"></div>
+                        <div id="animTuneParams" class="anim-tune-params"></div>
+                        <div id="animTunePreviewLabel" class="anim-tune-preview-label">Expression preview</div>
+                        <pre id="animTunePreview" class="anim-tune-preview"></pre>
+                        <div class="anim-tune-actions">
+                            <button id="animTuneReset" class="anim-tune-btn ghost">Reset</button>
+                            <button id="animTuneCopy" class="anim-tune-btn ghost">Copy</button>
+                            <button id="animTuneApply" class="anim-tune-btn primary">Apply</button>
+                        </div>
+                        <div id="animTuneStatus" class="anim-tune-status"></div>
+                    </div>
                 </div>
                 <div id="caption-container" class="caption-container hidden">
                     <div class="caption-panel">

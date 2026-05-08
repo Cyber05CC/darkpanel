@@ -708,3 +708,294 @@ function applySpeedGraph(influenceIn, influenceOut) {
     app.endUndoGroup();
     return count > 0 ? 'SUCCESS' : 'ERROR: No properties updated.';
 }
+
+// ============================================================================
+// ANIMATION PACK
+// ============================================================================
+
+function dpResolveTargetProperty(layer, matchPath) {
+    if (!layer || !matchPath) return null;
+    var parts = matchPath.split('/');
+    var cur = layer;
+    for (var i = 0; i < parts.length; i++) {
+        try {
+            cur = cur.property(parts[i]);
+        } catch (e) {
+            return null;
+        }
+        if (!cur) return null;
+    }
+    return cur;
+}
+
+function dpFirstSelectedAnimatableProperty(layer) {
+    try {
+        var sel = layer.selectedProperties;
+        if (!sel || sel.length === 0) return null;
+        for (var i = 0; i < sel.length; i++) {
+            var p = sel[i];
+            if (p && p.propertyType === PropertyType.PROPERTY && p.canSetExpression) {
+                return p;
+            }
+        }
+    } catch (e) {}
+    return null;
+}
+
+function applyExpressionToSelected(matchPath, code, opts) {
+    try {
+        if (typeof app === 'undefined' || !app.project) {
+            return 'Error: After Effects is not available';
+        }
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) {
+            return 'Error: Please open and select a composition';
+        }
+        var layers = comp.selectedLayers;
+        if (!layers || layers.length === 0) {
+            return 'Error: Please select at least one layer';
+        }
+
+        var preferSelected = false;
+        try {
+            preferSelected = !!(opts && opts.preferSelected);
+        } catch (e) {}
+        var targetLabel = '';
+        try {
+            targetLabel = (opts && opts.targetLabel) || matchPath;
+        } catch (e) {
+            targetLabel = matchPath;
+        }
+
+        var success = 0;
+        var skipped = [];
+        app.beginUndoGroup('Apply Animation Expression');
+        try {
+            for (var i = 0; i < layers.length; i++) {
+                var layer = layers[i];
+                var prop = null;
+                if (preferSelected) {
+                    prop = dpFirstSelectedAnimatableProperty(layer);
+                }
+                if (!prop) {
+                    prop = dpResolveTargetProperty(layer, matchPath);
+                }
+                if (!prop || !prop.canSetExpression) {
+                    skipped.push(layer.name + ': no compatible target');
+                    continue;
+                }
+                try {
+                    prop.expression = String(code);
+                    prop.expressionEnabled = true;
+                    success++;
+                } catch (e) {
+                    skipped.push(layer.name + ': ' + e.message);
+                }
+            }
+        } finally {
+            app.endUndoGroup();
+        }
+
+        if (success === 0) {
+            return 'Error: ' + (skipped.length ? skipped.join('; ') : 'no targets');
+        }
+        var result = 'Successfully applied to ' + success + ' layer(s)';
+        if (skipped.length) result += ' (' + skipped.length + ' skipped)';
+        return result;
+    } catch (e) {
+        return 'Critical error: ' + (e && e.message ? e.message : e);
+    }
+}
+
+function dpFindOrCreateDarkPanelFolder() {
+    try {
+        for (var i = 1; i <= app.project.numItems; i++) {
+            var item = app.project.item(i);
+            if (item instanceof FolderItem && item.name === 'darkPanel') return item;
+        }
+        return app.project.items.addFolder('darkPanel');
+    } catch (e) {
+        return null;
+    }
+}
+
+function dpScaleKeyframesSpatially(prop, sx, sy) {
+    if (!prop) return;
+    var n = 0;
+    try {
+        n = prop.numKeys;
+    } catch (e) {}
+    if (n <= 0) {
+        try {
+            var v = prop.value;
+            if (v && v.length >= 2) {
+                var nv = [v[0] * sx, v[1] * sy];
+                if (v.length === 3) nv.push(v[2]);
+                prop.setValue(nv);
+            }
+        } catch (e) {}
+        return;
+    }
+    for (var k = 1; k <= n; k++) {
+        try {
+            var kv = prop.keyValue(k);
+            if (kv && kv.length >= 2) {
+                var nv2 = [kv[0] * sx, kv[1] * sy];
+                if (kv.length === 3) nv2.push(kv[2]);
+                prop.setValueAtKey(k, nv2);
+            }
+        } catch (e) {}
+    }
+}
+
+function dpScaleScalarKeyframes(prop, factor) {
+    if (!prop) return;
+    var n = 0;
+    try {
+        n = prop.numKeys;
+    } catch (e) {}
+    if (n <= 0) {
+        try {
+            prop.setValue(prop.value * factor);
+        } catch (e) {}
+        return;
+    }
+    for (var k = 1; k <= n; k++) {
+        try {
+            prop.setValueAtKey(k, prop.keyValue(k) * factor);
+        } catch (e) {}
+    }
+}
+
+function applyAEPWithCompFit(filePath, fitMode) {
+    try {
+        if (typeof app === 'undefined' || !app.project) {
+            return 'Error: After Effects is not available';
+        }
+        var hostComp = app.project.activeItem;
+        if (!hostComp || !(hostComp instanceof CompItem)) {
+            return 'Error: Please open and select a composition';
+        }
+        var f = new File(filePath);
+        if (!f.exists) {
+            return 'Error: Animation file not found';
+        }
+
+        var beforeIds = {};
+        for (var i = 1; i <= app.project.numItems; i++) {
+            beforeIds[app.project.item(i).id] = true;
+        }
+
+        var io = new ImportOptions(f);
+        var imported = null;
+        try {
+            imported = app.project.importFile(io);
+        } catch (e) {
+            return 'Error: Could not import .aep file: ' + e.message;
+        }
+
+        var srcComp = null;
+        var importedFolder = null;
+
+        if (imported instanceof CompItem) {
+            srcComp = imported;
+        } else if (imported instanceof FolderItem) {
+            importedFolder = imported;
+            for (var fi = 1; fi <= imported.numItems; fi++) {
+                var ch = imported.item(fi);
+                if (ch instanceof CompItem) {
+                    if (!srcComp || ch.numLayers > srcComp.numLayers) srcComp = ch;
+                }
+            }
+        }
+
+        if (!srcComp) {
+            for (var ai = 1; ai <= app.project.numItems; ai++) {
+                var it = app.project.item(ai);
+                if (it instanceof CompItem && !beforeIds[it.id]) {
+                    if (!srcComp || it.numLayers > srcComp.numLayers) srcComp = it;
+                }
+            }
+        }
+
+        if (!srcComp) return 'Error: No composition found in .aep';
+
+        var dpFolder = dpFindOrCreateDarkPanelFolder();
+        if (importedFolder && dpFolder) {
+            try {
+                importedFolder.parentFolder = dpFolder;
+            } catch (e) {}
+        } else if (dpFolder) {
+            for (var pj = 1; pj <= app.project.numItems; pj++) {
+                var pit = app.project.item(pj);
+                if (!beforeIds[pit.id] && pit !== dpFolder) {
+                    try {
+                        pit.parentFolder = dpFolder;
+                    } catch (e) {}
+                }
+            }
+        }
+
+        var srcW = srcComp.width;
+        var srcH = srcComp.height;
+        var destW = hostComp.width;
+        var destH = hostComp.height;
+
+        var mode = String(fitMode || 'fit').toLowerCase();
+        var sx, sy;
+        if (mode === 'stretch') {
+            sx = destW / srcW;
+            sy = destH / srcH;
+        } else {
+            var s = mode === 'fill'
+                ? Math.max(destW / srcW, destH / srcH)
+                : Math.min(destW / srcW, destH / srcH);
+            sx = s;
+            sy = s;
+        }
+
+        app.beginUndoGroup('Apply Animation (.aep)');
+        var ok = true;
+        var newLayer = null;
+        try {
+            newLayer = hostComp.layers.add(srcComp);
+            newLayer.collapseTransformation = true;
+            try {
+                newLayer.startTime = hostComp.time;
+            } catch (e) {}
+            try {
+                var apProp = newLayer.property('ADBE Transform Group').property('ADBE Anchor Point');
+                apProp.setValue([srcW / 2, srcH / 2]);
+            } catch (e) {}
+            try {
+                var posProp = newLayer.property('ADBE Transform Group').property('ADBE Position');
+                posProp.setValue([destW / 2, destH / 2]);
+            } catch (e) {}
+            try {
+                var scProp = newLayer.property('ADBE Transform Group').property('ADBE Scale');
+                scProp.setValue([sx * 100, sy * 100, 100]);
+            } catch (e) {}
+
+            for (var ds = 1; ds <= hostComp.numLayers; ds++) {
+                hostComp.layer(ds).selected = false;
+            }
+            newLayer.selected = true;
+        } catch (err) {
+            ok = false;
+            try {
+                if (newLayer) newLayer.remove();
+            } catch (e) {}
+            app.endUndoGroup();
+            return 'Error: ' + err.message;
+        }
+        app.endUndoGroup();
+
+        return 'Successfully applied (.aep fit ' + mode + ', src=' + srcW + 'x' + srcH + ' → dest=' + destW + 'x' + destH + ')';
+    } catch (e) {
+        return 'Critical error: ' + (e && e.message ? e.message : e);
+    }
+}
+
+function applyAnimationFFX(filePath) {
+    return applyPresetFromFilePath(filePath, false, 'effect');
+}

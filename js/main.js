@@ -99,7 +99,17 @@ document.addEventListener('DOMContentLoaded', async function () {
     const API_BASE = 'https://darkpanel-backend-swart.vercel.app/api';
     let csInterface = null;
     try {
-        csInterface = new CSInterface();
+        const candidate = new CSInterface();
+        // Browser preview: CSInterface object is constructable but its host bridge is absent.
+        // Treat it as unavailable unless getSystemPath actually works.
+        try {
+            const probe = candidate.getSystemPath
+                ? candidate.getSystemPath(SystemPath.USER_DATA)
+                : null;
+            if (probe) csInterface = candidate;
+        } catch (_) {
+            csInterface = null;
+        }
     } catch (_) {
         console.warn('CSInterface not available.');
     }
@@ -569,11 +579,34 @@ document.addEventListener('DOMContentLoaded', async function () {
         return data;
     }
     async function validateStoredKey() {
+        try {
+            if (
+                location.protocol.indexOf('http') === 0 &&
+                /^localhost(:|$)|^127\.0\.0\.1/.test(location.host) &&
+                /[?&]devbypass=1\b/.test(location.search)
+            ) {
+                return true;
+            }
+        } catch (_) {}
         const key = localStorage.getItem(LOCAL_KEY);
         if (!key) return false;
         if (!navigator.onLine) return true;
-        const data = await checkKey(key);
-        return !!(data && (data.ok || data.valid));
+        try {
+            const result = await apiPost('/license/check', { key, deviceId });
+            const data = result && result.data ? result.data : null;
+            // Server reachable AND explicit valid response
+            if (result && result.ok && data && (data.ok || data.valid)) return true;
+            // Server reachable AND explicit invalid response — require re-activation
+            if (result && result.ok && data && (data.ok === false || data.valid === false)) {
+                return false;
+            }
+            // Server unreachable / unexpected payload — trust the stored key.
+            // The offline branch above already does this; we extend it to network errors
+            // so a transient backend outage cannot lock users out.
+            return true;
+        } catch (_) {
+            return true;
+        }
     }
 
     const platformEl = document.getElementById('dp-platform');
@@ -747,7 +780,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     // ==================== AUTOPLAY PREVIEW ====================
     let selectedPresetEl = null;
-    let autoplayEnabled = localStorage.getItem('dp_autoplay') !== 'off';
+    let autoplayEnabled = localStorage.getItem('dp_autoplay') === 'on';
     let autoplayObserver = null;
     const autoplayingSet = new Set();
 
@@ -893,11 +926,14 @@ document.addEventListener('DOMContentLoaded', async function () {
             status = document.getElementById('status');
         const textPackBtn = document.getElementById('textPackBtn'),
             effectPackBtn = document.getElementById('effectPackBtn');
+        const animationPackBtn = document.getElementById('animationPackBtn');
         const itemsPerPage = 16;
         let currentPage = 1,
             totalPages = 1,
             currentView = 'all';
+        const VALID_PACKS = ['text', 'effect', 'animation'];
         let currentPack = localStorage.getItem('currentPack') || 'text';
+        if (VALID_PACKS.indexOf(currentPack) === -1) currentPack = 'text';
         let favorites = (() => {
             try {
                 const parsed = JSON.parse(localStorage.getItem('favorites') || '[]');
@@ -1007,6 +1043,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         async function autoUpdateIfNeeded() {
             if (!navigator.onLine || isSleeping) return;
+            if (!csInterface) return;
             try {
                 const res = await fetch(UPDATE_URL + '?v=' + Date.now(), { cache: 'no-store' });
                 if (!res.ok) return;
@@ -1120,13 +1157,466 @@ document.addEventListener('DOMContentLoaded', async function () {
             if (!pb) return;
             const ls = pb.querySelector('.pack-label');
             if (!ls) return;
-            ls.textContent = currentPack === 'text' ? 'Text Pack' : 'Effect Pack';
+            const labels = { text: 'Text Pack', effect: 'Effect Pack', animation: 'Animation Pack' };
+            ls.textContent = labels[currentPack] || 'Pack';
             textPackBtn?.classList.toggle('active', currentPack === 'text');
-            effectPackBtn?.classList.toggle('active', currentPack !== 'text');
+            effectPackBtn?.classList.toggle('active', currentPack === 'effect');
+            animationPackBtn?.classList.toggle('active', currentPack === 'animation');
         }
+
+        // ==================== ANIMATION PACK REGISTRY ====================
+        // Wrapped in a function so it is hoisted and accessible during init() even
+        // though this section sits after the call site in source order.
+        function getAnimationRegistry() {
+            return [
+            {
+                id: 'wiggle_position',
+                type: 'expression',
+                name: 'Wiggle Position',
+                target: 'ADBE Transform Group/ADBE Position',
+                targetLabel: 'Transform → Position',
+                code: 'wiggle({{freq}}, {{amp}})',
+                params: [
+                    { name: 'freq', label: 'Frequency', min: 0, max: 20, step: 0.1, default: 2, unit: 'Hz' },
+                    { name: 'amp', label: 'Amplitude', min: 0, max: 500, step: 1, default: 30, unit: 'px' },
+                ],
+            },
+            {
+                id: 'wiggle_rotation',
+                type: 'expression',
+                name: 'Wiggle Rotation',
+                target: 'ADBE Transform Group/ADBE Rotate Z',
+                targetLabel: 'Transform → Rotation',
+                code: 'wiggle({{freq}}, {{amp}})',
+                params: [
+                    { name: 'freq', label: 'Frequency', min: 0, max: 20, step: 0.1, default: 1.5, unit: 'Hz' },
+                    { name: 'amp', label: 'Amplitude', min: 0, max: 90, step: 0.5, default: 12, unit: '°' },
+                ],
+            },
+            {
+                id: 'wiggle_scale',
+                type: 'expression',
+                name: 'Wiggle Scale',
+                target: 'ADBE Transform Group/ADBE Scale',
+                targetLabel: 'Transform → Scale',
+                code: 'wiggle({{freq}}, {{amp}})',
+                params: [
+                    { name: 'freq', label: 'Frequency', min: 0, max: 20, step: 0.1, default: 1, unit: 'Hz' },
+                    { name: 'amp', label: 'Amplitude', min: 0, max: 50, step: 0.5, default: 8, unit: '%' },
+                ],
+            },
+            {
+                id: 'loop_out',
+                type: 'expression',
+                name: 'Loop Out',
+                target: 'ADBE Transform Group/ADBE Position',
+                targetLabel: 'Selected property (or Position)',
+                preferSelected: true,
+                code: 'loopOut("{{mode}}", {{count}})',
+                params: [
+                    { name: 'mode', label: 'Mode', type: 'select', options: ['cycle', 'pingpong', 'continue', 'offset'], default: 'cycle' },
+                    { name: 'count', label: 'Keyframe count', min: 0, max: 20, step: 1, default: 0, hint: '0 = all' },
+                ],
+            },
+            {
+                id: 'inertia_bounce',
+                type: 'expression',
+                name: 'Inertia Bounce',
+                target: 'ADBE Transform Group/ADBE Position',
+                targetLabel: 'Position (needs keyframes)',
+                preferSelected: true,
+                code:
+                    '// Inertia bounce — needs at least 2 keyframes\n' +
+                    'amp = {{amp}};\n' +
+                    'freq = {{freq}};\n' +
+                    'decay = {{decay}};\n' +
+                    'n = 0;\n' +
+                    'if (numKeys > 0) {\n' +
+                    '  n = nearestKey(time).index;\n' +
+                    '  if (key(n).time > time) n--;\n' +
+                    '}\n' +
+                    'if (n > 0) {\n' +
+                    '  t = time - key(n).time;\n' +
+                    '  v = velocityAtTime(key(n).time - thisComp.frameDuration / 10);\n' +
+                    '  value + v * (amp / 100) * Math.sin(freq * t * 2 * Math.PI) / Math.exp(decay * t);\n' +
+                    '} else value;',
+                params: [
+                    { name: 'amp', label: 'Amplitude', min: 0, max: 30, step: 0.5, default: 5 },
+                    { name: 'freq', label: 'Frequency', min: 0, max: 10, step: 0.1, default: 4 },
+                    { name: 'decay', label: 'Decay', min: 0, max: 20, step: 0.5, default: 6 },
+                ],
+            },
+            {
+                id: 'overshoot_spring',
+                type: 'expression',
+                name: 'Overshoot Spring',
+                target: 'ADBE Transform Group/ADBE Position',
+                targetLabel: 'Position / Scale / Rotation',
+                preferSelected: true,
+                code:
+                    '// Overshoot spring after last keyframe\n' +
+                    'amp = {{amp}};\n' +
+                    'freq = {{freq}};\n' +
+                    'decay = {{decay}};\n' +
+                    'n = 0;\n' +
+                    'if (numKeys > 0) {\n' +
+                    '  n = nearestKey(time).index;\n' +
+                    '  if (key(n).time > time) n--;\n' +
+                    '}\n' +
+                    'if (n > 0) {\n' +
+                    '  t = time - key(n).time;\n' +
+                    '  v = velocityAtTime(key(n).time - 0.001);\n' +
+                    '  w = freq * Math.PI * 2;\n' +
+                    '  value + v * (amp / 100) * Math.sin(t * w) / Math.exp(decay * t);\n' +
+                    '} else value;',
+                params: [
+                    { name: 'amp', label: 'Amplitude', min: 0, max: 30, step: 0.5, default: 8 },
+                    { name: 'freq', label: 'Frequency', min: 0, max: 10, step: 0.1, default: 3 },
+                    { name: 'decay', label: 'Decay', min: 0, max: 20, step: 0.5, default: 5 },
+                ],
+            },
+            {
+                id: 'time_rotate',
+                type: 'expression',
+                name: 'Constant Rotation',
+                target: 'ADBE Transform Group/ADBE Rotate Z',
+                targetLabel: 'Rotation',
+                code: 'time * {{speed}}',
+                params: [
+                    { name: 'speed', label: 'Speed', min: -360, max: 360, step: 1, default: 90, unit: '°/s' },
+                ],
+            },
+            {
+                id: 'sine_wave_y',
+                type: 'expression',
+                name: 'Sine Wave (Vertical)',
+                target: 'ADBE Transform Group/ADBE Position',
+                targetLabel: 'Position',
+                code:
+                    'freq = {{freq}};\n' +
+                    'amp = {{amp}};\n' +
+                    '[value[0], value[1] + Math.sin(time * freq * 2 * Math.PI) * amp];',
+                params: [
+                    { name: 'freq', label: 'Frequency', min: 0, max: 10, step: 0.1, default: 1, unit: 'Hz' },
+                    { name: 'amp', label: 'Amplitude', min: 0, max: 500, step: 1, default: 50, unit: 'px' },
+                ],
+            },
+            {
+                id: 'auto_orient_motion',
+                type: 'expression',
+                name: 'Auto-Orient (motion)',
+                target: 'ADBE Transform Group/ADBE Rotate Z',
+                targetLabel: 'Rotation',
+                code:
+                    'delta = {{delta}};\n' +
+                    'p1 = position.valueAtTime(time - delta);\n' +
+                    'p2 = position.valueAtTime(time + delta);\n' +
+                    'radiansToDegrees(Math.atan2(p2[1] - p1[1], p2[0] - p1[0])) + {{offset}};',
+                params: [
+                    { name: 'delta', label: 'Delta time', min: 0.01, max: 1, step: 0.01, default: 0.05, unit: 's' },
+                    { name: 'offset', label: 'Offset', min: -180, max: 180, step: 1, default: 0, unit: '°' },
+                ],
+            },
+            {
+                id: 'random_jitter_pos',
+                type: 'expression',
+                name: 'Random Jitter',
+                target: 'ADBE Transform Group/ADBE Position',
+                targetLabel: 'Position',
+                code:
+                    'seedRandom({{seed}}, true);\n' +
+                    '[value[0] + (random(-1, 1) * {{amp}}), value[1] + (random(-1, 1) * {{amp}})];',
+                params: [
+                    { name: 'seed', label: 'Seed', min: 0, max: 999, step: 1, default: 1 },
+                    { name: 'amp', label: 'Amplitude', min: 0, max: 200, step: 1, default: 20, unit: 'px' },
+                ],
+            },
+        ];
+        }
+
+        function getAnimationById(id) {
+            const reg = getAnimationRegistry();
+            for (let i = 0; i < reg.length; i++) {
+                if (reg[i].id === id) return reg[i];
+            }
+            return null;
+        }
+
+        function defaultAnimationParams(anim) {
+            const out = {};
+            (anim.params || []).forEach((p) => (out[p.name] = p.default));
+            return out;
+        }
+
+        function loadAnimationParams(animId) {
+            const anim = getAnimationById(animId);
+            if (!anim) return {};
+            const defaults = defaultAnimationParams(anim);
+            try {
+                const raw = localStorage.getItem('dp_anim_params_' + animId);
+                if (!raw) return defaults;
+                const stored = JSON.parse(raw);
+                const merged = Object.assign({}, defaults, stored || {});
+                return merged;
+            } catch (e) {
+                return defaults;
+            }
+        }
+
+        function saveAnimationParams(animId, params) {
+            try {
+                localStorage.setItem('dp_anim_params_' + animId, JSON.stringify(params || {}));
+            } catch (e) {}
+        }
+
+        function buildExpressionCode(anim, params) {
+            const merged = Object.assign({}, defaultAnimationParams(anim), params || {});
+            return String(anim.code).replace(/\{\{(\w+)\}\}/g, (_, k) => {
+                const v = merged[k];
+                return v === undefined || v === null ? '' : String(v);
+            });
+        }
+
+        async function applyAnimation(animId, paramsOverride) {
+            const anim = getAnimationById(animId);
+            if (!anim) return showMiniToast('Animation not found');
+            if (!csInterface) return showMiniToast('AE environment kerak');
+
+            if (anim.type === 'expression') {
+                const params = paramsOverride || loadAnimationParams(animId);
+                const code = buildExpressionCode(anim, params);
+                const opts = {
+                    preferSelected: !!anim.preferSelected,
+                    targetLabel: anim.targetLabel || anim.target,
+                };
+                const optsLiteral = JSON.stringify(opts);
+                const codeLiteral = JSON.stringify(code);
+                const targetLiteral = JSON.stringify(anim.target);
+                const script = `applyExpressionToSelected(${targetLiteral}, ${codeLiteral}, ${optsLiteral})`;
+                const out = String((await evalES(script)) || '');
+                if (out.indexOf('Successfully applied') !== -1) {
+                    showMiniToast('Done');
+                    return true;
+                }
+                showMiniToast(out.replace(/^Error:\s*/, '') || 'Apply failed');
+                return false;
+            }
+            if (anim.type === 'ffx') {
+                showMiniToast('FFX animation type comes from preset pipeline');
+                return false;
+            }
+            if (anim.type === 'aep') {
+                showMiniToast('AEP animation type comes from preset pipeline');
+                return false;
+            }
+            showMiniToast('Unsupported animation type');
+            return false;
+        }
+
+        // ==================== ANIMATION TUNE PANEL ====================
+        const animTunePanel = document.getElementById('anim-tune-panel');
+        const animTuneNameEl = document.getElementById('animTuneName');
+        const animTuneTypeEl = document.getElementById('animTuneType');
+        const animTuneTargetEl = document.getElementById('animTuneTarget');
+        const animTuneParamsEl = document.getElementById('animTuneParams');
+        const animTunePreviewEl = document.getElementById('animTunePreview');
+        const animTunePreviewLabelEl = document.getElementById('animTunePreviewLabel');
+        const animTuneStatusEl = document.getElementById('animTuneStatus');
+        const animTuneApplyBtn = document.getElementById('animTuneApply');
+        const animTuneResetBtn = document.getElementById('animTuneReset');
+        const animTuneCopyBtn = document.getElementById('animTuneCopy');
+        const animTuneCloseBtn = document.getElementById('animTuneClose');
+        let activeTuneAnim = null;
+        let activeTuneParams = {};
+
+        function setTuneStatus(msg, kind) {
+            if (!animTuneStatusEl) return;
+            animTuneStatusEl.textContent = msg || '';
+            animTuneStatusEl.className = 'anim-tune-status' + (kind ? ' ' + kind : '');
+        }
+
+        function refreshTunePreview() {
+            if (!activeTuneAnim || !animTunePreviewEl) return;
+            if (activeTuneAnim.type === 'expression') {
+                animTunePreviewEl.textContent = buildExpressionCode(
+                    activeTuneAnim,
+                    activeTuneParams
+                );
+                animTunePreviewEl.className = 'anim-tune-preview';
+                if (animTunePreviewLabelEl)
+                    animTunePreviewLabelEl.textContent = 'Expression preview';
+            } else {
+                animTunePreviewEl.textContent =
+                    activeTuneAnim.type === 'aep'
+                        ? 'Imports a precomp and scales it to fit your composition.'
+                        : 'Applies the animation preset to the selected layer(s).';
+                animTunePreviewEl.className = 'anim-tune-preview ' + activeTuneAnim.type;
+                if (animTunePreviewLabelEl)
+                    animTunePreviewLabelEl.textContent = 'Behavior';
+            }
+        }
+
+        function renderTuneParams() {
+            if (!animTuneParamsEl || !activeTuneAnim) return;
+            animTuneParamsEl.innerHTML = '';
+            (activeTuneAnim.params || []).forEach((p) => {
+                const row = document.createElement('div');
+                row.className = 'anim-tune-row';
+                const lbl = document.createElement('div');
+                lbl.className = 'lbl';
+                const left = document.createElement('b');
+                left.textContent = p.label || p.name;
+                lbl.appendChild(left);
+                const right = document.createElement('span');
+                right.className = 'val';
+                lbl.appendChild(right);
+                row.appendChild(lbl);
+
+                const updateLabel = (val) => {
+                    if (p.type === 'select') {
+                        right.textContent = String(val);
+                    } else {
+                        const num = Number(val);
+                        const display = Number.isFinite(num)
+                            ? Number.isInteger(num)
+                                ? num
+                                : num.toFixed(2).replace(/\.?0+$/, '')
+                            : val;
+                        right.textContent = display + (p.unit ? ' ' + p.unit : '');
+                    }
+                };
+
+                let input;
+                if (p.type === 'select') {
+                    input = document.createElement('select');
+                    (p.options || []).forEach((opt) => {
+                        const o = document.createElement('option');
+                        o.value = opt;
+                        o.textContent = opt;
+                        if (String(activeTuneParams[p.name]) === String(opt)) o.selected = true;
+                        input.appendChild(o);
+                    });
+                    input.addEventListener('change', () => {
+                        activeTuneParams[p.name] = input.value;
+                        updateLabel(input.value);
+                        refreshTunePreview();
+                    });
+                } else {
+                    input = document.createElement('input');
+                    input.type = 'range';
+                    input.min = String(p.min ?? 0);
+                    input.max = String(p.max ?? 100);
+                    input.step = String(p.step ?? 1);
+                    input.value = String(activeTuneParams[p.name] ?? p.default ?? 0);
+                    input.addEventListener('input', () => {
+                        const num = Number(input.value);
+                        activeTuneParams[p.name] = Number.isFinite(num) ? num : input.value;
+                        updateLabel(input.value);
+                        refreshTunePreview();
+                    });
+                }
+                updateLabel(activeTuneParams[p.name] ?? p.default);
+                row.appendChild(input);
+
+                if (p.hint) {
+                    const hint = document.createElement('div');
+                    hint.style.cssText = 'font-size:10px;color:#7c8088;margin-top:2px';
+                    hint.textContent = p.hint;
+                    row.appendChild(hint);
+                }
+                animTuneParamsEl.appendChild(row);
+            });
+        }
+
+        function openAnimationTuner(animId) {
+            const anim = getAnimationById(animId);
+            if (!anim || !animTunePanel) return;
+            activeTuneAnim = anim;
+            activeTuneParams = loadAnimationParams(animId);
+            if (animTuneNameEl) animTuneNameEl.textContent = anim.name;
+            if (animTuneTypeEl) {
+                const badgeMap = { expression: 'EXPR', ffx: 'FFX', aep: 'AEP' };
+                animTuneTypeEl.textContent = badgeMap[anim.type] || (anim.type || 'EXPR').toUpperCase();
+            }
+            if (animTuneTargetEl) animTuneTargetEl.textContent = 'Target: ' + (anim.targetLabel || anim.target || '—');
+            renderTuneParams();
+            refreshTunePreview();
+            setTuneStatus('');
+            animTunePanel.classList.remove('hidden');
+            animTunePanel.setAttribute('aria-hidden', 'false');
+        }
+
+        function closeAnimationTuner() {
+            if (!animTunePanel) return;
+            animTunePanel.classList.add('hidden');
+            animTunePanel.setAttribute('aria-hidden', 'true');
+            activeTuneAnim = null;
+            activeTuneParams = {};
+            setTuneStatus('');
+        }
+
+        animTuneCloseBtn?.addEventListener('click', closeAnimationTuner);
+        animTunePanel?.addEventListener('click', (e) => {
+            if (e.target === animTunePanel) closeAnimationTuner();
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && animTunePanel && !animTunePanel.classList.contains('hidden')) {
+                closeAnimationTuner();
+            }
+        });
+        animTuneResetBtn?.addEventListener('click', () => {
+            if (!activeTuneAnim) return;
+            activeTuneParams = defaultAnimationParams(activeTuneAnim);
+            try {
+                localStorage.removeItem('dp_anim_params_' + activeTuneAnim.id);
+            } catch (e) {}
+            renderTuneParams();
+            refreshTunePreview();
+            setTuneStatus('Reset to defaults');
+        });
+        animTuneCopyBtn?.addEventListener('click', async () => {
+            if (!activeTuneAnim) return;
+            const text =
+                activeTuneAnim.type === 'expression'
+                    ? buildExpressionCode(activeTuneAnim, activeTuneParams)
+                    : '';
+            if (!text) {
+                setTuneStatus('Nothing to copy', 'error');
+                return;
+            }
+            try {
+                await navigator.clipboard.writeText(text);
+                setTuneStatus('Copied to clipboard', 'success');
+            } catch (e) {
+                try {
+                    const ta = document.createElement('textarea');
+                    ta.value = text;
+                    ta.style.cssText = 'position:fixed;top:-9999px;left:0;';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(ta);
+                    setTuneStatus('Copied to clipboard', 'success');
+                } catch (err) {
+                    setTuneStatus('Copy failed', 'error');
+                }
+            }
+        });
+        animTuneApplyBtn?.addEventListener('click', async () => {
+            if (!activeTuneAnim) return;
+            saveAnimationParams(activeTuneAnim.id, activeTuneParams);
+            setTuneStatus('Applying…');
+            const ok = await applyAnimation(activeTuneAnim.id, activeTuneParams);
+            setTuneStatus(ok ? 'Applied ✓' : 'Apply failed', ok ? 'success' : 'error');
+            if (ok) setTimeout(closeAnimationTuner, 600);
+        });
 
         async function createPresets() {
             if (!presetList) return;
+            if (currentPack === 'animation') {
+                renderAnimationCards();
+                return;
+            }
             presetList.innerHTML =
                 '<div class="loading-placeholder"><img src="' +
                 DP_ASSETS.loadingchaGif +
@@ -1177,6 +1667,190 @@ document.addEventListener('DOMContentLoaded', async function () {
             initializeFavorites();
             initPresetPreviews();
             showPage(1);
+        }
+
+        function renderAnimationCards() {
+            const reg = getAnimationRegistry();
+            presetList.innerHTML = '';
+            animPreviewerClear();
+            reg.forEach((anim) => {
+                const card = document.createElement('div');
+                card.className = 'preset preset-animation';
+                card.dataset.file = 'anim:' + anim.id;
+                card.dataset.animId = anim.id;
+                const badgeMap = { expression: 'EXPR', ffx: 'FFX', aep: 'AEP' };
+                const badge = badgeMap[anim.type] || (anim.type || 'EXPR').toUpperCase();
+                const badgeCls = anim.type === 'aep' ? 'aep' : anim.type === 'ffx' ? 'ffx' : 'expr';
+                const fxClass = (anim.id === 'auto_orient_motion')
+                    ? 'arrow'
+                    : (anim.id === 'random_jitter_pos' || anim.id === 'sine_wave_y')
+                        ? 'dot'
+                        : '';
+                card.innerHTML =
+                    '<div class="preset-thumb">' +
+                    '<div class="image-placeholder"></div>' +
+                    '<div class="anim-preview-stage" data-fx-id="' + anim.id + '">' +
+                    '<div class="anim-preview-fx ' + fxClass + '"></div>' +
+                    '</div>' +
+                    '<span class="anim-badge ' + badgeCls + '">' + badge + '</span>' +
+                    '<button class="anim-tune-btn" type="button" title="Tune parameters" aria-label="Tune">⚙</button>' +
+                    '<input type="checkbox" class="favorite-check" data-file="anim:' + anim.id + '">' +
+                    '</div>' +
+                    '<div class="preset-name">' + anim.name + '</div>';
+                presetList.appendChild(card);
+
+                card.querySelector('.anim-tune-btn')?.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openAnimationTuner(anim.id);
+                });
+
+                const fx = card.querySelector('.anim-preview-fx');
+                if (fx) animPreviewerAdd(fx, anim.id, card);
+            });
+            presets = document.querySelectorAll('.preset');
+            initializeFavorites();
+            initPresetPreviews();
+            showPage(1);
+            animPreviewerStart();
+        }
+
+        // ==================== ANIMATION CARD LIVE PREVIEWS ====================
+        // Hoisted via function declarations + var-hoisted state so it works no matter
+        // when renderAnimationCards is invoked relative to source order.
+        var _animPrevItems;
+        var _animPrevRaf;
+        var _animPrevStart;
+        var _animPrevObs;
+        var _animPrevVisible;
+
+        function _animPrevEnsure() {
+            if (!_animPrevItems) _animPrevItems = [];
+            if (!_animPrevVisible) _animPrevVisible = new WeakSet();
+            if (!_animPrevObs) {
+                _animPrevObs = new IntersectionObserver(
+                    (entries) => {
+                        entries.forEach((e) => {
+                            if (e.isIntersecting) _animPrevVisible.add(e.target);
+                            else _animPrevVisible.delete(e.target);
+                        });
+                    },
+                    { rootMargin: '50px', threshold: 0 }
+                );
+            }
+        }
+
+        function _animPrevUpdate(item, t) {
+            const el = item.fx;
+            if (!el) return;
+            let tx = 0, ty = 0, rot = 0, sx = 1, sy = 1;
+            switch (item.id) {
+                case 'wiggle_position':
+                    tx = Math.sin(t * 4.1) * 18 + Math.sin(t * 9.7) * 6;
+                    ty = Math.cos(t * 5.3) * 12 + Math.sin(t * 11.1) * 4;
+                    break;
+                case 'wiggle_rotation':
+                    rot = Math.sin(t * 3.5) * 18 + Math.sin(t * 8.3) * 6;
+                    break;
+                case 'wiggle_scale': {
+                    const s = 1 + Math.sin(t * 3) * 0.18 + Math.sin(t * 7.2) * 0.06;
+                    sx = sy = s;
+                    break;
+                }
+                case 'loop_out': {
+                    const period = 1.4;
+                    const k = (t % period) / period;
+                    tx = -40 + k * 80;
+                    break;
+                }
+                case 'inertia_bounce': {
+                    const period = 1.6;
+                    const k = t % period;
+                    const decay = Math.exp(-2.5 * k);
+                    ty = Math.sin(k * Math.PI * 4) * 18 * decay;
+                    tx = (k / period) * 30 - 15;
+                    break;
+                }
+                case 'overshoot_spring': {
+                    const period = 1.8;
+                    const k = t % period;
+                    const decay = Math.exp(-1.6 * k);
+                    const s = 1 + Math.sin(k * Math.PI * 3) * 0.35 * decay;
+                    sx = sy = s;
+                    break;
+                }
+                case 'time_rotate':
+                    rot = (t * 60) % 360;
+                    break;
+                case 'sine_wave_y':
+                    ty = Math.sin(t * 2.5) * 22;
+                    break;
+                case 'auto_orient_motion': {
+                    const radius = 28;
+                    const speed = 1.2;
+                    tx = Math.cos(t * speed) * radius;
+                    ty = Math.sin(t * speed) * radius;
+                    rot = ((t * speed) * 180 / Math.PI + 90) % 360;
+                    break;
+                }
+                case 'random_jitter_pos': {
+                    const step = Math.floor(t * 4);
+                    let s1 = Math.sin(step * 12.9898) * 43758.5453;
+                    let s2 = Math.sin(step * 78.233) * 43758.5453;
+                    s1 -= Math.floor(s1);
+                    s2 -= Math.floor(s2);
+                    tx = (s1 - 0.5) * 36;
+                    ty = (s2 - 0.5) * 22;
+                    break;
+                }
+            }
+            el.style.transform =
+                'translate(' + tx.toFixed(2) + 'px,' + ty.toFixed(2) + 'px) ' +
+                'rotate(' + rot.toFixed(2) + 'deg) ' +
+                'scale(' + sx.toFixed(3) + ',' + sy.toFixed(3) + ')';
+        }
+
+        function _animPrevTick(now) {
+            const t = (now - _animPrevStart) / 1000;
+            for (let i = 0; i < _animPrevItems.length; i++) {
+                const it = _animPrevItems[i];
+                if (!it.fx.isConnected) continue;
+                if (!_animPrevVisible.has(it.card)) continue;
+                _animPrevUpdate(it, t);
+            }
+            if (_animPrevItems.length) {
+                _animPrevRaf = requestAnimationFrame(_animPrevTick);
+            } else {
+                _animPrevRaf = null;
+            }
+        }
+
+        function animPreviewerAdd(fxEl, id, cardEl) {
+            _animPrevEnsure();
+            _animPrevItems.push({ fx: fxEl, id: id, card: cardEl });
+            _animPrevObs.observe(cardEl);
+        }
+
+        function animPreviewerClear() {
+            _animPrevEnsure();
+            if (_animPrevObs) {
+                _animPrevItems.forEach((it) => {
+                    try {
+                        _animPrevObs.unobserve(it.card);
+                    } catch (e) {}
+                });
+            }
+            _animPrevItems.length = 0;
+            if (_animPrevRaf) {
+                cancelAnimationFrame(_animPrevRaf);
+                _animPrevRaf = null;
+            }
+        }
+
+        function animPreviewerStart() {
+            _animPrevEnsure();
+            if (_animPrevRaf || _animPrevItems.length === 0) return;
+            _animPrevStart = performance.now();
+            _animPrevRaf = requestAnimationFrame(_animPrevTick);
         }
         function initPresetPreviews() {
             document.querySelectorAll('.preset').forEach((preset) => {
@@ -1326,6 +2000,11 @@ document.addEventListener('DOMContentLoaded', async function () {
                 showMiniToast('Select a preset first!');
                 return;
             }
+            if (typeof selectedPreset === 'string' && selectedPreset.indexOf('anim:') === 0) {
+                const animId = selectedPreset.slice('anim:'.length);
+                await applyAnimation(animId);
+                return;
+            }
             try {
                 const candidates = getPresetFetchCandidates(selectedPreset);
                 for (const candidate of candidates) {
@@ -1455,6 +2134,10 @@ document.addEventListener('DOMContentLoaded', async function () {
             effectPackBtn?.addEventListener('click', (e) => {
                 e.preventDefault();
                 switchPack('effect');
+            });
+            animationPackBtn?.addEventListener('click', (e) => {
+                e.preventDefault();
+                switchPack('animation');
             });
             // Owner panel
             document.getElementById('ownerBtn')?.addEventListener('click', () => {
@@ -2074,6 +2757,7 @@ document.addEventListener('DOMContentLoaded', async function () {
             }, 1600);
         }
         function switchPack(type) {
+            if (VALID_PACKS.indexOf(type) === -1) return;
             if (currentPack === type) return;
             currentPack = type;
             localStorage.setItem('currentPack', type);
@@ -2153,6 +2837,12 @@ document.addEventListener('DOMContentLoaded', async function () {
                 dd.classList.remove('show');
                 pb.classList.remove('active');
                 switchPack('effect');
+            });
+            animationPackBtn?.addEventListener('click', (e) => {
+                e.preventDefault();
+                dd.classList.remove('show');
+                pb.classList.remove('active');
+                switchPack('animation');
             });
             document.addEventListener('click', (e) => {
                 if (!pd.contains(e.target)) {
