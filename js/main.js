@@ -1525,13 +1525,18 @@ document.addEventListener('DOMContentLoaded', async function () {
                 const optsLiteral = JSON.stringify(opts);
                 const codeLiteral = JSON.stringify(code);
                 const targetLiteral = JSON.stringify(anim.target);
-                const script = `applyExpressionToSelected(${targetLiteral}, ${codeLiteral}, ${optsLiteral})`;
+                // Self-contained ExtendScript: uses applyExpressionToSelected if available,
+                // otherwise inlines the equivalent logic so older JSX installs still work.
+                const script = `(function(){try{if(typeof app==="undefined"||!app.project)return"Error: After Effects is not available";var comp=app.project.activeItem;if(!comp||!(comp instanceof CompItem))return"Error: Please open and select a composition";var layers=comp.selectedLayers;if(!layers||layers.length===0)return"Error: Please select at least one layer";if(typeof applyExpressionToSelected==="function"){return applyExpressionToSelected(${targetLiteral}, ${codeLiteral}, ${optsLiteral});}var matchPath=${targetLiteral};var code=${codeLiteral};var opts=${optsLiteral};var preferSelected=!!(opts&&opts.preferSelected);function resolveTarget(L,p){if(!L||!p)return null;var parts=p.split("/");var c=L;for(var i=0;i<parts.length;i++){try{c=c.property(parts[i]);}catch(e){return null;}if(!c)return null;}return c;}function firstSelectedAnimatable(L){try{var sel=L.selectedProperties;if(!sel||sel.length===0)return null;for(var i=0;i<sel.length;i++){var p=sel[i];if(p&&p.propertyType===PropertyType.PROPERTY&&p.canSetExpression)return p;}}catch(e){}return null;}var ok=0;var skipped=[];app.beginUndoGroup("Apply Animation Expression");try{for(var i=0;i<layers.length;i++){var L=layers[i];var prop=null;if(preferSelected)prop=firstSelectedAnimatable(L);if(!prop)prop=resolveTarget(L,matchPath);if(!prop||!prop.canSetExpression){skipped.push(L.name+": no compatible target ("+matchPath+")");continue;}try{prop.expression=String(code);prop.expressionEnabled=true;ok++;}catch(e){skipped.push(L.name+": "+e.message);}}}finally{app.endUndoGroup();}if(ok===0)return"Error: "+(skipped.length?skipped.join("; "):"no targets");var r="Successfully applied to "+ok+" layer(s)";if(skipped.length)r+=" ("+skipped.length+" skipped)";return r;}catch(e){return"Critical error: "+(e&&e.message?e.message:e);}})()`;
                 const out = String((await evalES(script)) || '');
                 if (out.indexOf('Successfully applied') !== -1) {
                     showMiniToast('Done');
                     return true;
                 }
-                showMiniToast(out.replace(/^Error:\s*/, '') || 'Apply failed');
+                showMiniToast(
+                    out.replace(/^(Error|Critical error):\s*/, '') ||
+                        'Empty response from AE (expression apply)'
+                );
                 return false;
             }
             if (anim.type === 'ffx') {
