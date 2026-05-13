@@ -924,7 +924,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         const textPackBtn = document.getElementById('textPackBtn'),
             effectPackBtn = document.getElementById('effectPackBtn');
         const animationPackBtn = document.getElementById('animationPackBtn');
-        const itemsPerPage = 16;
+        const itemsPerPage = 18;
         let currentPage = 1,
             totalPages = 1,
             currentView = 'all';
