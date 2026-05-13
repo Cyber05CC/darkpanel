@@ -2181,6 +2181,11 @@ document.addEventListener('DOMContentLoaded', async function () {
                 for (const candidate of candidates) {
                     if (!/\.ffx$/i.test(candidate)) continue;
                     const localResult = await tryApplyLocalPreset(candidate);
+                    if (localResult.indexOf('Successfully applied to 0') !== -1) {
+                        const m = localResult.match(/Errors:\s*\n-\s*(.+)/);
+                        showMiniToast(m ? m[1].split('\n')[0] : 'No layers updated');
+                        return;
+                    }
                     if (localResult.indexOf('Successfully applied') !== -1) {
                         showMiniToast('Done');
                         return;
@@ -2209,68 +2214,86 @@ document.addEventListener('DOMContentLoaded', async function () {
                     chunks = [];
                 for (let i = 0; i < base64.length; i += cs) chunks.push(base64.slice(i, i + cs));
                 if (!csInterface) return;
-                csInterface.evalScript(
-                    `(function(){try{var p=Folder.temp.fsName+"/dp_temp${ext}";var f=new File(p);f.encoding="BINARY";f.open("w");f.close();return p;}catch(e){return"ERR";}})()`,
-                    async (tempPath) => {
-                        if (tempPath === 'ERR') return;
-                        const ep = tempPath.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-                        for (const chunk of chunks)
-                            await new Promise((r) =>
-                                csInterface.evalScript(
-                                    `(function(){var f=new File("${ep}");f.encoding="BINARY";f.open("a");function b64d(s){var k="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=",o="",b=0,x=0,c;for(var i=0;i<s.length;i++){c=s.charAt(i);if(c=='=')break;var v=k.indexOf(c);if(v<0)continue;b=(b<<6)|v;x+=6;if(x>=8){x-=8;o+=String.fromCharCode((b>>x)&0xFF);}}return o;}f.write(b64d("${chunk}"));f.close();})()`,
-                                    r
-                                )
-                            );
-                        if (!isAEP) {
-                            const presetKind = /^text_/i.test(resolvedPreset) ? 'text' : 'effect';
-                            csInterface.evalScript(
-                                `applyPresetFromFilePath("${ep}", ${
-                                    presetKind === 'effect' ? 'true' : 'false'
-                                }, "${presetKind}")`,
-                                (r) => {
-                                    const out = String(r || '');
-                                    showMiniToast(
-                                        out.indexOf('Successfully applied') !== -1
-                                            ? 'Done'
-                                            : out.replace('Error: ', '') || 'Apply failed'
-                                    );
-                                }
-                            );
-                        } else {
-                            // AEP apply logic (same as before - abbreviated for space)
-                            const evalP = (s) => new Promise((r) => csInterface.evalScript(s, r));
-                            try {
-                                const r1 = String(
-                                    (await evalP(
-                                        `(function(){try{var f=new File("${ep}");if(!f.exists)return"ERR:File missing";var comp=app.project.activeItem;if(!comp||!(comp instanceof CompItem))return"ERR:No Comp";var sel=comp.selectedLayers;if(sel.length===0)return"ERR:No Layer";for(var c=app.project.numItems;c>=1;c--){try{var itm=app.project.item(c);if(itm.name==="dp_temp.aep"||itm.name==="dp_temp")itm.remove();}catch(e){}}var io=new ImportOptions(f);var imported=app.project.importFile(io);var srcComp=null;if(imported instanceof CompItem)srcComp=imported;else if(imported instanceof FolderItem){for(var i=1;i<=imported.numItems;i++){if(imported.item(i) instanceof CompItem){srcComp=imported.item(i);break;}}}if(!srcComp||srcComp.numLayers===0)return"ERR:Bad AEP";var srcLayer=srcComp.layer(1);return"OK:"+srcComp.id+":"+sel[0].index+":"+(srcLayer.adjustmentLayer?1:0)+":"+(sel[0].source?1:0)+":"+imported.id;}catch(e){return"ERR:"+e;}})();`
-                                    )) || ''
-                                );
-                                if (!r1 || r1.indexOf('ERR') === 0)
-                                    throw new Error((r1 || 'ERR:No response').replace('ERR:', ''));
-                                const p = r1.split(':'),
-                                    srcId = p[1],
-                                    tIdx = p[2],
-                                    isAdj = p[3] === '1',
-                                    hasSource = p[4] === '1',
-                                    importedId = p[5];
-                                const r2 = String(
-                                    (await evalP(
-                                        `(function(){var u=false;try{var comp=app.project.activeItem;if(!comp)return"Error";var srcComp=null;for(var i=1;i<=app.project.numItems;i++){if(app.project.item(i).id==${srcId}){srcComp=app.project.item(i);break;}}if(!srcComp)return"Error";var imp=null;for(var j=1;j<=app.project.numItems;j++){if(app.project.item(j).id==${importedId}){imp=app.project.item(j);break;}}var tl=comp.layer(${tIdx});if(!tl)return"Error";app.beginUndoGroup("Apply Smart Preset");u=true;var dpF=null;for(var k=1;k<=app.project.numItems;k++){if(app.project.item(k) instanceof FolderItem&&app.project.item(k).name==="darkPanel"){dpF=app.project.item(k);break;}}if(!dpF)dpF=app.project.items.addFolder("darkPanel");if(imp)imp.parentFolder=dpF;try{srcComp.parentFolder=dpF;}catch(e){}if(${isAdj}){var sl=srcComp.layer(1);var se=sl.property("ADBE Effect Parade");var al=comp.layers.addSolid([1,1,1],srcComp.name||"Adjustment",comp.width,comp.height,1,comp.duration);al.adjustmentLayer=true;if(se&&se.numProperties>0){var ae=al.property("ADBE Effect Parade");for(var ef=1;ef<=se.numProperties;ef++){try{var ne=ae.addProperty(se.property(ef).matchName);}catch(e){}}}al.startTime=tl.startTime;al.inPoint=tl.inPoint;al.outPoint=tl.outPoint;if(al.index>tl.index)al.moveBefore(comp.layer(tl.index));for(var d=1;d<=comp.numLayers;d++)comp.layer(d).selected=false;al.selected=true;}else if(${hasSource}){var nl=comp.layers.add(srcComp);nl.collapseTransformation=true;nl.startTime=tl.startTime;nl.inPoint=tl.inPoint;nl.outPoint=tl.outPoint;if(tl.index>1)nl.moveAfter(comp.layer(tl.index));tl.remove();for(var dd=1;dd<=comp.numLayers;dd++)comp.layer(dd).selected=false;nl.selected=true;}else{var nl2=comp.layers.add(srcComp);nl2.startTime=comp.time;nl2.collapseTransformation=true;for(var d2=1;d2<=comp.numLayers;d2++)comp.layer(d2).selected=false;nl2.selected=true;}try{new File("${ep}").remove();}catch(e){}app.endUndoGroup();u=false;return"Success";}catch(err){if(u)try{app.endUndoGroup();}catch(x){}return"Error:"+err;}})();`
-                                    )) || ''
-                                );
-                                showMiniToast(
-                                    r2.indexOf('Success') !== -1
-                                        ? 'EFFECTS ADDED'
-                                        : r2.replace('Error:', '') || 'Apply failed'
-                                );
-                            } catch (e) {
-                                showMiniToast(String(e.message || e).replace('Error: ', ''));
-                            }
-                        }
-                    }
+                const tempPath = await evalES(
+                    `(function(){try{var p=Folder.temp.fsName+"/dp_temp${ext}";var f=new File(p);f.encoding="BINARY";f.open("w");f.close();return p;}catch(e){return"ERR:"+e.message;}})()`
                 );
+                if (!tempPath || tempPath.indexOf('ERR') === 0) {
+                    showMiniToast(
+                        'Temp file create failed: ' +
+                            (tempPath || 'no response').replace(/^ERR:?/, '')
+                    );
+                    return;
+                }
+                const ep = tempPath.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+                let writeErr = '';
+                for (const chunk of chunks) {
+                    const wr = await evalES(
+                        `(function(){try{var f=new File("${ep}");f.encoding="BINARY";if(!f.open("a"))return"ERR:open "+f.error;function b64d(s){var k="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=",o="",b=0,x=0,c;for(var i=0;i<s.length;i++){c=s.charAt(i);if(c=='=')break;var v=k.indexOf(c);if(v<0)continue;b=(b<<6)|v;x+=6;if(x>=8){x-=8;o+=String.fromCharCode((b>>x)&0xFF);}}return o;}f.write(b64d("${chunk}"));f.close();return"OK";}catch(e){try{f.close();}catch(_){}return"ERR:"+e.message;}})()`
+                    );
+                    if (!wr || wr.indexOf('ERR') === 0) {
+                        writeErr = (wr || 'no response').replace(/^ERR:?/, '');
+                        break;
+                    }
+                }
+                if (writeErr) {
+                    showMiniToast('Write failed: ' + writeErr);
+                    return;
+                }
+                if (!isAEP) {
+                    const presetKind = /^text_/i.test(resolvedPreset) ? 'text' : 'effect';
+                    const protectLayout = presetKind === 'effect' ? 'true' : 'false';
+                    // Inline apply: works even if installed JSX lacks applyPresetFromFilePath.
+                    const out = await evalES(
+                        `(function(){try{if(typeof app==="undefined"||!app.project)return"Error: After Effects is not available";var pf=new File("${ep}");if(!pf.exists)return"Error: Temp preset file missing";var ai=app.project.activeItem;if(!ai||!(ai instanceof CompItem))return"Error: Please open and select a composition";if(!ai.selectedLayers||ai.selectedLayers.length===0)return"Error: Please select at least one layer";if(typeof applyPresetFromFilePath==="function"){return applyPresetFromFilePath("${ep}", ${protectLayout}, "${presetKind}");}var sel=[];for(var s=0;s<ai.selectedLayers.length;s++)sel.push(ai.selectedLayers[s]);var ok=0,errs=[];app.beginUndoGroup("Apply Preset");try{for(var i=0;i<sel.length;i++){var L=sel[i];try{if("${presetKind}"==="text"){if(!(L instanceof TextLayer)){errs.push(L.name+": text preset requires a text layer");continue;}}else if(!L.property("ADBE Effect Parade")){errs.push(L.name+": layer cannot accept effects");continue;}L.applyPreset(pf);ok++;}catch(e){errs.push(L.name+": "+e.message);}}}finally{app.endUndoGroup();}var r="Successfully applied to "+ok+" layer(s)";if(errs.length)r+="\\n\\nErrors:\\n- "+errs.join("\\n- ");return r;}catch(e){return"Critical error: "+e.message;}})()`
+                    );
+                    const outStr = String(out || '');
+                    if (outStr.indexOf('Successfully applied to 0') !== -1) {
+                        const m = outStr.match(/Errors:\s*\n-\s*(.+)/);
+                        showMiniToast(m ? m[1].split('\n')[0] : 'No layers updated');
+                    } else if (outStr.indexOf('Successfully applied') !== -1) {
+                        showMiniToast('Done');
+                    } else {
+                        showMiniToast(
+                            outStr.replace(/^(Error|Critical error):\s*/, '') ||
+                                'Empty response from AE'
+                        );
+                    }
+                    return;
+                }
+                {
+                    // AEP apply path below
+                    const evalP = (s) => new Promise((r) => csInterface.evalScript(s, r));
+                    try {
+                        const r1 = String(
+                            (await evalP(
+                                `(function(){try{var f=new File("${ep}");if(!f.exists)return"ERR:File missing";var comp=app.project.activeItem;if(!comp||!(comp instanceof CompItem))return"ERR:No Comp";var sel=comp.selectedLayers;if(sel.length===0)return"ERR:No Layer";for(var c=app.project.numItems;c>=1;c--){try{var itm=app.project.item(c);if(itm.name==="dp_temp.aep"||itm.name==="dp_temp")itm.remove();}catch(e){}}var io=new ImportOptions(f);var imported=app.project.importFile(io);var srcComp=null;if(imported instanceof CompItem)srcComp=imported;else if(imported instanceof FolderItem){for(var i=1;i<=imported.numItems;i++){if(imported.item(i) instanceof CompItem){srcComp=imported.item(i);break;}}}if(!srcComp||srcComp.numLayers===0)return"ERR:Bad AEP";var srcLayer=srcComp.layer(1);return"OK:"+srcComp.id+":"+sel[0].index+":"+(srcLayer.adjustmentLayer?1:0)+":"+(sel[0].source?1:0)+":"+imported.id;}catch(e){return"ERR:"+e;}})();`
+                            )) || ''
+                        );
+                        if (!r1 || r1.indexOf('ERR') === 0)
+                            throw new Error((r1 || 'ERR:No response').replace('ERR:', ''));
+                        const p = r1.split(':'),
+                            srcId = p[1],
+                            tIdx = p[2],
+                            isAdj = p[3] === '1',
+                            hasSource = p[4] === '1',
+                            importedId = p[5];
+                        const r2 = String(
+                            (await evalP(
+                                `(function(){var u=false;try{var comp=app.project.activeItem;if(!comp)return"Error";var srcComp=null;for(var i=1;i<=app.project.numItems;i++){if(app.project.item(i).id==${srcId}){srcComp=app.project.item(i);break;}}if(!srcComp)return"Error";var imp=null;for(var j=1;j<=app.project.numItems;j++){if(app.project.item(j).id==${importedId}){imp=app.project.item(j);break;}}var tl=comp.layer(${tIdx});if(!tl)return"Error";app.beginUndoGroup("Apply Smart Preset");u=true;var dpF=null;for(var k=1;k<=app.project.numItems;k++){if(app.project.item(k) instanceof FolderItem&&app.project.item(k).name==="darkPanel"){dpF=app.project.item(k);break;}}if(!dpF)dpF=app.project.items.addFolder("darkPanel");if(imp)imp.parentFolder=dpF;try{srcComp.parentFolder=dpF;}catch(e){}if(${isAdj}){var sl=srcComp.layer(1);var se=sl.property("ADBE Effect Parade");var al=comp.layers.addSolid([1,1,1],srcComp.name||"Adjustment",comp.width,comp.height,1,comp.duration);al.adjustmentLayer=true;if(se&&se.numProperties>0){var ae=al.property("ADBE Effect Parade");for(var ef=1;ef<=se.numProperties;ef++){try{var ne=ae.addProperty(se.property(ef).matchName);}catch(e){}}}al.startTime=tl.startTime;al.inPoint=tl.inPoint;al.outPoint=tl.outPoint;if(al.index>tl.index)al.moveBefore(comp.layer(tl.index));for(var d=1;d<=comp.numLayers;d++)comp.layer(d).selected=false;al.selected=true;}else if(${hasSource}){var nl=comp.layers.add(srcComp);nl.collapseTransformation=true;nl.startTime=tl.startTime;nl.inPoint=tl.inPoint;nl.outPoint=tl.outPoint;if(tl.index>1)nl.moveAfter(comp.layer(tl.index));tl.remove();for(var dd=1;dd<=comp.numLayers;dd++)comp.layer(dd).selected=false;nl.selected=true;}else{var nl2=comp.layers.add(srcComp);nl2.startTime=comp.time;nl2.collapseTransformation=true;for(var d2=1;d2<=comp.numLayers;d2++)comp.layer(d2).selected=false;nl2.selected=true;}try{new File("${ep}").remove();}catch(e){}app.endUndoGroup();u=false;return"Success";}catch(err){if(u)try{app.endUndoGroup();}catch(x){}return"Error:"+err;}})();`
+                            )) || ''
+                        );
+                        showMiniToast(
+                            r2.indexOf('Success') !== -1
+                                ? 'EFFECTS ADDED'
+                                : r2.replace('Error:', '') || 'Apply failed'
+                        );
+                    } catch (e) {
+                        showMiniToast(String(e.message || e).replace('Error: ', ''));
+                    }
+                }
             } catch (err) {
                 console.error('Apply error:', err);
+                showMiniToast('Apply error: ' + (err && err.message ? err.message : String(err)));
             }
         }
 
