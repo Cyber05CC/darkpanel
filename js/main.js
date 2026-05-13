@@ -1,8 +1,5 @@
 document.addEventListener('keydown', (e) => {
-    if (
-        (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J')) ||
-        e.key === 'F12'
-    ) {
+    if ((e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J')) || e.key === 'F12') {
         e.preventDefault();
         e.stopImmediatePropagation();
         return false;
@@ -975,7 +972,12 @@ document.addEventListener('DOMContentLoaded', async function () {
         function isFavoritePreset(fileName) {
             const aliases = getPresetAliases(fileName).map((item) => item.toLowerCase());
             return favorites.some(
-                (fav) => aliases.indexOf(String(fav || '').trim().toLowerCase()) !== -1
+                (fav) =>
+                    aliases.indexOf(
+                        String(fav || '')
+                            .trim()
+                            .toLowerCase()
+                    ) !== -1
             );
         }
 
@@ -1080,7 +1082,10 @@ document.addEventListener('DOMContentLoaded', async function () {
             const extRoot = normalizeSystemPath(csInterface.getSystemPath(SystemPath.EXTENSION));
             for (const [rel, info] of Object.entries(files || {})) {
                 if (!SUPPORTED_TEXT_FILES.includes(rel)) {
-                    console.warn('autoUpdate: unsupported file in manifest, skipping hard install:', rel);
+                    console.warn(
+                        'autoUpdate: unsupported file in manifest, skipping hard install:',
+                        rel
+                    );
                     return false;
                 }
                 const text = await (
@@ -1157,7 +1162,11 @@ document.addEventListener('DOMContentLoaded', async function () {
             if (!pb) return;
             const ls = pb.querySelector('.pack-label');
             if (!ls) return;
-            const labels = { text: 'Text Pack', effect: 'Effect Pack', animation: 'Animation Pack' };
+            const labels = {
+                text: 'Text Pack',
+                effect: 'Effect Pack',
+                animation: 'Animation Pack',
+            };
             ls.textContent = labels[currentPack] || 'Pack';
             textPackBtn?.classList.toggle('active', currentPack === 'text');
             effectPackBtn?.classList.toggle('active', currentPack === 'effect');
@@ -1169,169 +1178,293 @@ document.addEventListener('DOMContentLoaded', async function () {
         // though this section sits after the call site in source order.
         function getAnimationRegistry() {
             return [
-            {
-                id: 'wiggle_position',
-                type: 'expression',
-                name: 'Wiggle Position',
-                target: 'ADBE Transform Group/ADBE Position',
-                targetLabel: 'Transform → Position',
-                code: 'wiggle({{freq}}, {{amp}})',
-                params: [
-                    { name: 'freq', label: 'Frequency', min: 0, max: 20, step: 0.1, default: 2, unit: 'Hz' },
-                    { name: 'amp', label: 'Amplitude', min: 0, max: 500, step: 1, default: 30, unit: 'px' },
-                ],
-            },
-            {
-                id: 'wiggle_rotation',
-                type: 'expression',
-                name: 'Wiggle Rotation',
-                target: 'ADBE Transform Group/ADBE Rotate Z',
-                targetLabel: 'Transform → Rotation',
-                code: 'wiggle({{freq}}, {{amp}})',
-                params: [
-                    { name: 'freq', label: 'Frequency', min: 0, max: 20, step: 0.1, default: 1.5, unit: 'Hz' },
-                    { name: 'amp', label: 'Amplitude', min: 0, max: 90, step: 0.5, default: 12, unit: '°' },
-                ],
-            },
-            {
-                id: 'wiggle_scale',
-                type: 'expression',
-                name: 'Wiggle Scale',
-                target: 'ADBE Transform Group/ADBE Scale',
-                targetLabel: 'Transform → Scale',
-                code: 'wiggle({{freq}}, {{amp}})',
-                params: [
-                    { name: 'freq', label: 'Frequency', min: 0, max: 20, step: 0.1, default: 1, unit: 'Hz' },
-                    { name: 'amp', label: 'Amplitude', min: 0, max: 50, step: 0.5, default: 8, unit: '%' },
-                ],
-            },
-            {
-                id: 'loop_out',
-                type: 'expression',
-                name: 'Loop Out',
-                target: 'ADBE Transform Group/ADBE Position',
-                targetLabel: 'Selected property (or Position)',
-                preferSelected: true,
-                code: 'loopOut("{{mode}}", {{count}})',
-                params: [
-                    { name: 'mode', label: 'Mode', type: 'select', options: ['cycle', 'pingpong', 'continue', 'offset'], default: 'cycle' },
-                    { name: 'count', label: 'Keyframe count', min: 0, max: 20, step: 1, default: 0, hint: '0 = all' },
-                ],
-            },
-            {
-                id: 'inertia_bounce',
-                type: 'expression',
-                name: 'Inertia Bounce',
-                target: 'ADBE Transform Group/ADBE Position',
-                targetLabel: 'Position (needs keyframes)',
-                preferSelected: true,
-                code:
-                    '// Inertia bounce — needs at least 2 keyframes\n' +
-                    'amp = {{amp}};\n' +
-                    'freq = {{freq}};\n' +
-                    'decay = {{decay}};\n' +
-                    'n = 0;\n' +
-                    'if (numKeys > 0) {\n' +
-                    '  n = nearestKey(time).index;\n' +
-                    '  if (key(n).time > time) n--;\n' +
-                    '}\n' +
-                    'if (n > 0) {\n' +
-                    '  t = time - key(n).time;\n' +
-                    '  v = velocityAtTime(key(n).time - thisComp.frameDuration / 10);\n' +
-                    '  value + v * (amp / 100) * Math.sin(freq * t * 2 * Math.PI) / Math.exp(decay * t);\n' +
-                    '} else value;',
-                params: [
-                    { name: 'amp', label: 'Amplitude', min: 0, max: 30, step: 0.5, default: 5 },
-                    { name: 'freq', label: 'Frequency', min: 0, max: 10, step: 0.1, default: 4 },
-                    { name: 'decay', label: 'Decay', min: 0, max: 20, step: 0.5, default: 6 },
-                ],
-            },
-            {
-                id: 'overshoot_spring',
-                type: 'expression',
-                name: 'Overshoot Spring',
-                target: 'ADBE Transform Group/ADBE Position',
-                targetLabel: 'Position / Scale / Rotation',
-                preferSelected: true,
-                code:
-                    '// Overshoot spring after last keyframe\n' +
-                    'amp = {{amp}};\n' +
-                    'freq = {{freq}};\n' +
-                    'decay = {{decay}};\n' +
-                    'n = 0;\n' +
-                    'if (numKeys > 0) {\n' +
-                    '  n = nearestKey(time).index;\n' +
-                    '  if (key(n).time > time) n--;\n' +
-                    '}\n' +
-                    'if (n > 0) {\n' +
-                    '  t = time - key(n).time;\n' +
-                    '  v = velocityAtTime(key(n).time - 0.001);\n' +
-                    '  w = freq * Math.PI * 2;\n' +
-                    '  value + v * (amp / 100) * Math.sin(t * w) / Math.exp(decay * t);\n' +
-                    '} else value;',
-                params: [
-                    { name: 'amp', label: 'Amplitude', min: 0, max: 30, step: 0.5, default: 8 },
-                    { name: 'freq', label: 'Frequency', min: 0, max: 10, step: 0.1, default: 3 },
-                    { name: 'decay', label: 'Decay', min: 0, max: 20, step: 0.5, default: 5 },
-                ],
-            },
-            {
-                id: 'time_rotate',
-                type: 'expression',
-                name: 'Constant Rotation',
-                target: 'ADBE Transform Group/ADBE Rotate Z',
-                targetLabel: 'Rotation',
-                code: 'time * {{speed}}',
-                params: [
-                    { name: 'speed', label: 'Speed', min: -360, max: 360, step: 1, default: 90, unit: '°/s' },
-                ],
-            },
-            {
-                id: 'sine_wave_y',
-                type: 'expression',
-                name: 'Sine Wave (Vertical)',
-                target: 'ADBE Transform Group/ADBE Position',
-                targetLabel: 'Position',
-                code:
-                    'freq = {{freq}};\n' +
-                    'amp = {{amp}};\n' +
-                    '[value[0], value[1] + Math.sin(time * freq * 2 * Math.PI) * amp];',
-                params: [
-                    { name: 'freq', label: 'Frequency', min: 0, max: 10, step: 0.1, default: 1, unit: 'Hz' },
-                    { name: 'amp', label: 'Amplitude', min: 0, max: 500, step: 1, default: 50, unit: 'px' },
-                ],
-            },
-            {
-                id: 'auto_orient_motion',
-                type: 'expression',
-                name: 'Auto-Orient (motion)',
-                target: 'ADBE Transform Group/ADBE Rotate Z',
-                targetLabel: 'Rotation',
-                code:
-                    'delta = {{delta}};\n' +
-                    'p1 = position.valueAtTime(time - delta);\n' +
-                    'p2 = position.valueAtTime(time + delta);\n' +
-                    'radiansToDegrees(Math.atan2(p2[1] - p1[1], p2[0] - p1[0])) + {{offset}};',
-                params: [
-                    { name: 'delta', label: 'Delta time', min: 0.01, max: 1, step: 0.01, default: 0.05, unit: 's' },
-                    { name: 'offset', label: 'Offset', min: -180, max: 180, step: 1, default: 0, unit: '°' },
-                ],
-            },
-            {
-                id: 'random_jitter_pos',
-                type: 'expression',
-                name: 'Random Jitter',
-                target: 'ADBE Transform Group/ADBE Position',
-                targetLabel: 'Position',
-                code:
-                    'seedRandom({{seed}}, true);\n' +
-                    '[value[0] + (random(-1, 1) * {{amp}}), value[1] + (random(-1, 1) * {{amp}})];',
-                params: [
-                    { name: 'seed', label: 'Seed', min: 0, max: 999, step: 1, default: 1 },
-                    { name: 'amp', label: 'Amplitude', min: 0, max: 200, step: 1, default: 20, unit: 'px' },
-                ],
-            },
-        ];
+                {
+                    id: 'wiggle_position',
+                    type: 'expression',
+                    name: 'Wiggle Position',
+                    target: 'ADBE Transform Group/ADBE Position',
+                    targetLabel: 'Transform → Position',
+                    code: 'wiggle({{freq}}, {{amp}})',
+                    params: [
+                        {
+                            name: 'freq',
+                            label: 'Frequency',
+                            min: 0,
+                            max: 20,
+                            step: 0.1,
+                            default: 2,
+                            unit: 'Hz',
+                        },
+                        {
+                            name: 'amp',
+                            label: 'Amplitude',
+                            min: 0,
+                            max: 500,
+                            step: 1,
+                            default: 30,
+                            unit: 'px',
+                        },
+                    ],
+                },
+                {
+                    id: 'wiggle_rotation',
+                    type: 'expression',
+                    name: 'Wiggle Rotation',
+                    target: 'ADBE Transform Group/ADBE Rotate Z',
+                    targetLabel: 'Transform → Rotation',
+                    code: 'wiggle({{freq}}, {{amp}})',
+                    params: [
+                        {
+                            name: 'freq',
+                            label: 'Frequency',
+                            min: 0,
+                            max: 20,
+                            step: 0.1,
+                            default: 1.5,
+                            unit: 'Hz',
+                        },
+                        {
+                            name: 'amp',
+                            label: 'Amplitude',
+                            min: 0,
+                            max: 90,
+                            step: 0.5,
+                            default: 12,
+                            unit: '°',
+                        },
+                    ],
+                },
+                {
+                    id: 'wiggle_scale',
+                    type: 'expression',
+                    name: 'Wiggle Scale',
+                    target: 'ADBE Transform Group/ADBE Scale',
+                    targetLabel: 'Transform → Scale',
+                    code: 'wiggle({{freq}}, {{amp}})',
+                    params: [
+                        {
+                            name: 'freq',
+                            label: 'Frequency',
+                            min: 0,
+                            max: 20,
+                            step: 0.1,
+                            default: 1,
+                            unit: 'Hz',
+                        },
+                        {
+                            name: 'amp',
+                            label: 'Amplitude',
+                            min: 0,
+                            max: 50,
+                            step: 0.5,
+                            default: 8,
+                            unit: '%',
+                        },
+                    ],
+                },
+                {
+                    id: 'loop_out',
+                    type: 'expression',
+                    name: 'Loop Out',
+                    target: 'ADBE Transform Group/ADBE Position',
+                    targetLabel: 'Selected property (or Position)',
+                    preferSelected: true,
+                    code: 'loopOut("{{mode}}", {{count}})',
+                    params: [
+                        {
+                            name: 'mode',
+                            label: 'Mode',
+                            type: 'select',
+                            options: ['cycle', 'pingpong', 'continue', 'offset'],
+                            default: 'cycle',
+                        },
+                        {
+                            name: 'count',
+                            label: 'Keyframe count',
+                            min: 0,
+                            max: 20,
+                            step: 1,
+                            default: 0,
+                            hint: '0 = all',
+                        },
+                    ],
+                },
+                {
+                    id: 'inertia_bounce',
+                    type: 'expression',
+                    name: 'Inertia Bounce',
+                    target: 'ADBE Transform Group/ADBE Position',
+                    targetLabel: 'Position (needs keyframes)',
+                    preferSelected: true,
+                    code:
+                        '// Inertia bounce — needs at least 2 keyframes\n' +
+                        'amp = {{amp}};\n' +
+                        'freq = {{freq}};\n' +
+                        'decay = {{decay}};\n' +
+                        'n = 0;\n' +
+                        'if (numKeys > 0) {\n' +
+                        '  n = nearestKey(time).index;\n' +
+                        '  if (key(n).time > time) n--;\n' +
+                        '}\n' +
+                        'if (n > 0) {\n' +
+                        '  t = time - key(n).time;\n' +
+                        '  v = velocityAtTime(key(n).time - thisComp.frameDuration / 10);\n' +
+                        '  value + v * (amp / 100) * Math.sin(freq * t * 2 * Math.PI) / Math.exp(decay * t);\n' +
+                        '} else value;',
+                    params: [
+                        { name: 'amp', label: 'Amplitude', min: 0, max: 30, step: 0.5, default: 5 },
+                        {
+                            name: 'freq',
+                            label: 'Frequency',
+                            min: 0,
+                            max: 10,
+                            step: 0.1,
+                            default: 4,
+                        },
+                        { name: 'decay', label: 'Decay', min: 0, max: 20, step: 0.5, default: 6 },
+                    ],
+                },
+                {
+                    id: 'overshoot_spring',
+                    type: 'expression',
+                    name: 'Overshoot Spring',
+                    target: 'ADBE Transform Group/ADBE Position',
+                    targetLabel: 'Position / Scale / Rotation',
+                    preferSelected: true,
+                    code:
+                        '// Overshoot spring after last keyframe\n' +
+                        'amp = {{amp}};\n' +
+                        'freq = {{freq}};\n' +
+                        'decay = {{decay}};\n' +
+                        'n = 0;\n' +
+                        'if (numKeys > 0) {\n' +
+                        '  n = nearestKey(time).index;\n' +
+                        '  if (key(n).time > time) n--;\n' +
+                        '}\n' +
+                        'if (n > 0) {\n' +
+                        '  t = time - key(n).time;\n' +
+                        '  v = velocityAtTime(key(n).time - 0.001);\n' +
+                        '  w = freq * Math.PI * 2;\n' +
+                        '  value + v * (amp / 100) * Math.sin(t * w) / Math.exp(decay * t);\n' +
+                        '} else value;',
+                    params: [
+                        { name: 'amp', label: 'Amplitude', min: 0, max: 30, step: 0.5, default: 8 },
+                        {
+                            name: 'freq',
+                            label: 'Frequency',
+                            min: 0,
+                            max: 10,
+                            step: 0.1,
+                            default: 3,
+                        },
+                        { name: 'decay', label: 'Decay', min: 0, max: 20, step: 0.5, default: 5 },
+                    ],
+                },
+                {
+                    id: 'time_rotate',
+                    type: 'expression',
+                    name: 'Constant Rotation',
+                    target: 'ADBE Transform Group/ADBE Rotate Z',
+                    targetLabel: 'Rotation',
+                    code: 'time * {{speed}}',
+                    params: [
+                        {
+                            name: 'speed',
+                            label: 'Speed',
+                            min: -360,
+                            max: 360,
+                            step: 1,
+                            default: 90,
+                            unit: '°/s',
+                        },
+                    ],
+                },
+                {
+                    id: 'sine_wave_y',
+                    type: 'expression',
+                    name: 'Sine Wave (Vertical)',
+                    target: 'ADBE Transform Group/ADBE Position',
+                    targetLabel: 'Position',
+                    code:
+                        'freq = {{freq}};\n' +
+                        'amp = {{amp}};\n' +
+                        '[value[0], value[1] + Math.sin(time * freq * 2 * Math.PI) * amp];',
+                    params: [
+                        {
+                            name: 'freq',
+                            label: 'Frequency',
+                            min: 0,
+                            max: 10,
+                            step: 0.1,
+                            default: 1,
+                            unit: 'Hz',
+                        },
+                        {
+                            name: 'amp',
+                            label: 'Amplitude',
+                            min: 0,
+                            max: 500,
+                            step: 1,
+                            default: 50,
+                            unit: 'px',
+                        },
+                    ],
+                },
+                {
+                    id: 'auto_orient_motion',
+                    type: 'expression',
+                    name: 'Auto-Orient (motion)',
+                    target: 'ADBE Transform Group/ADBE Rotate Z',
+                    targetLabel: 'Rotation',
+                    code:
+                        'delta = {{delta}};\n' +
+                        'p1 = position.valueAtTime(time - delta);\n' +
+                        'p2 = position.valueAtTime(time + delta);\n' +
+                        'radiansToDegrees(Math.atan2(p2[1] - p1[1], p2[0] - p1[0])) + {{offset}};',
+                    params: [
+                        {
+                            name: 'delta',
+                            label: 'Delta time',
+                            min: 0.01,
+                            max: 1,
+                            step: 0.01,
+                            default: 0.05,
+                            unit: 's',
+                        },
+                        {
+                            name: 'offset',
+                            label: 'Offset',
+                            min: -180,
+                            max: 180,
+                            step: 1,
+                            default: 0,
+                            unit: '°',
+                        },
+                    ],
+                },
+                {
+                    id: 'random_jitter_pos',
+                    type: 'expression',
+                    name: 'Random Jitter',
+                    target: 'ADBE Transform Group/ADBE Position',
+                    targetLabel: 'Position',
+                    code:
+                        'seedRandom({{seed}}, true);\n' +
+                        '[value[0] + (random(-1, 1) * {{amp}}), value[1] + (random(-1, 1) * {{amp}})];',
+                    params: [
+                        { name: 'seed', label: 'Seed', min: 0, max: 999, step: 1, default: 1 },
+                        {
+                            name: 'amp',
+                            label: 'Amplitude',
+                            min: 0,
+                            max: 200,
+                            step: 1,
+                            default: 20,
+                            unit: 'px',
+                        },
+                    ],
+                },
+            ];
         }
 
         function getAnimationById(id) {
@@ -1451,8 +1584,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                         ? 'Imports a precomp and scales it to fit your composition.'
                         : 'Applies the animation preset to the selected layer(s).';
                 animTunePreviewEl.className = 'anim-tune-preview ' + activeTuneAnim.type;
-                if (animTunePreviewLabelEl)
-                    animTunePreviewLabelEl.textContent = 'Behavior';
+                if (animTunePreviewLabelEl) animTunePreviewLabelEl.textContent = 'Behavior';
             }
         }
 
@@ -1536,9 +1668,12 @@ document.addEventListener('DOMContentLoaded', async function () {
             if (animTuneNameEl) animTuneNameEl.textContent = anim.name;
             if (animTuneTypeEl) {
                 const badgeMap = { expression: 'EXPR', ffx: 'FFX', aep: 'AEP' };
-                animTuneTypeEl.textContent = badgeMap[anim.type] || (anim.type || 'EXPR').toUpperCase();
+                animTuneTypeEl.textContent =
+                    badgeMap[anim.type] || (anim.type || 'EXPR').toUpperCase();
             }
-            if (animTuneTargetEl) animTuneTargetEl.textContent = 'Target: ' + (anim.targetLabel || anim.target || '—');
+            if (animTuneTargetEl)
+                animTuneTargetEl.textContent =
+                    'Target: ' + (anim.targetLabel || anim.target || '—');
             renderTuneParams();
             refreshTunePreview();
             setTuneStatus('');
@@ -1560,7 +1695,11 @@ document.addEventListener('DOMContentLoaded', async function () {
             if (e.target === animTunePanel) closeAnimationTuner();
         });
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && animTunePanel && !animTunePanel.classList.contains('hidden')) {
+            if (
+                e.key === 'Escape' &&
+                animTunePanel &&
+                !animTunePanel.classList.contains('hidden')
+            ) {
                 closeAnimationTuner();
             }
         });
@@ -1681,22 +1820,35 @@ document.addEventListener('DOMContentLoaded', async function () {
                 const badgeMap = { expression: 'EXPR', ffx: 'FFX', aep: 'AEP' };
                 const badge = badgeMap[anim.type] || (anim.type || 'EXPR').toUpperCase();
                 const badgeCls = anim.type === 'aep' ? 'aep' : anim.type === 'ffx' ? 'ffx' : 'expr';
-                const fxClass = (anim.id === 'auto_orient_motion')
-                    ? 'arrow'
-                    : (anim.id === 'random_jitter_pos' || anim.id === 'sine_wave_y')
-                        ? 'dot'
-                        : '';
+                const fxClass =
+                    anim.id === 'auto_orient_motion'
+                        ? 'arrow'
+                        : anim.id === 'random_jitter_pos' || anim.id === 'sine_wave_y'
+                          ? 'dot'
+                          : '';
                 card.innerHTML =
                     '<div class="preset-thumb">' +
                     '<div class="image-placeholder"></div>' +
-                    '<div class="anim-preview-stage" data-fx-id="' + anim.id + '">' +
-                    '<div class="anim-preview-fx ' + fxClass + '"></div>' +
+                    '<div class="anim-preview-stage" data-fx-id="' +
+                    anim.id +
+                    '">' +
+                    '<div class="anim-preview-fx ' +
+                    fxClass +
+                    '"></div>' +
                     '</div>' +
-                    '<span class="anim-badge ' + badgeCls + '">' + badge + '</span>' +
+                    '<span class="anim-badge ' +
+                    badgeCls +
+                    '">' +
+                    badge +
+                    '</span>' +
                     '<button class="anim-tune-btn" type="button" title="Tune parameters" aria-label="Tune">⚙</button>' +
-                    '<input type="checkbox" class="favorite-check" data-file="anim:' + anim.id + '">' +
+                    '<input type="checkbox" class="favorite-check" data-file="anim:' +
+                    anim.id +
+                    '">' +
                     '</div>' +
-                    '<div class="preset-name">' + anim.name + '</div>';
+                    '<div class="preset-name">' +
+                    anim.name +
+                    '</div>';
                 presetList.appendChild(card);
 
                 card.querySelector('.anim-tune-btn')?.addEventListener('click', (e) => {
@@ -1742,7 +1894,11 @@ document.addEventListener('DOMContentLoaded', async function () {
         function _animPrevUpdate(item, t) {
             const el = item.fx;
             if (!el) return;
-            let tx = 0, ty = 0, rot = 0, sx = 1, sy = 1;
+            let tx = 0,
+                ty = 0,
+                rot = 0,
+                sx = 1,
+                sy = 1;
             switch (item.id) {
                 case 'wiggle_position':
                     tx = Math.sin(t * 4.1) * 18 + Math.sin(t * 9.7) * 6;
@@ -1789,7 +1945,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                     const speed = 1.2;
                     tx = Math.cos(t * speed) * radius;
                     ty = Math.sin(t * speed) * radius;
-                    rot = ((t * speed) * 180 / Math.PI + 90) % 360;
+                    rot = ((t * speed * 180) / Math.PI + 90) % 360;
                     break;
                 }
                 case 'random_jitter_pos': {
@@ -1804,9 +1960,19 @@ document.addEventListener('DOMContentLoaded', async function () {
                 }
             }
             el.style.transform =
-                'translate(' + tx.toFixed(2) + 'px,' + ty.toFixed(2) + 'px) ' +
-                'rotate(' + rot.toFixed(2) + 'deg) ' +
-                'scale(' + sx.toFixed(3) + ',' + sy.toFixed(3) + ')';
+                'translate(' +
+                tx.toFixed(2) +
+                'px,' +
+                ty.toFixed(2) +
+                'px) ' +
+                'rotate(' +
+                rot.toFixed(2) +
+                'deg) ' +
+                'scale(' +
+                sx.toFixed(3) +
+                ',' +
+                sy.toFixed(3) +
+                ')';
         }
 
         function _animPrevTick(now) {
@@ -1888,7 +2054,12 @@ document.addEventListener('DOMContentLoaded', async function () {
         function toggleFavorite(file, isFav) {
             const aliases = getPresetAliases(file).map((item) => item.toLowerCase());
             favorites = favorites.filter(
-                (fav) => aliases.indexOf(String(fav || '').trim().toLowerCase()) === -1
+                (fav) =>
+                    aliases.indexOf(
+                        String(fav || '')
+                            .trim()
+                            .toLowerCase()
+                    ) === -1
             );
             if (isFav) favorites.push(file);
             persistFavorites();
@@ -2017,6 +2188,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                     if (
                         localResult &&
                         localResult.indexOf('Preset file not found') === -1 &&
+                        localResult.indexOf('Presets folder not found') === -1 &&
                         localResult.indexOf('Cannot locate extension folder') === -1
                     ) {
                         showMiniToast(localResult.replace(/^Error:\s*/, ''));
@@ -2027,13 +2199,12 @@ document.addEventListener('DOMContentLoaded', async function () {
                 const { fileName: resolvedPreset, blob } = await fetchPresetAsset(selectedPreset);
                 const isAEP = resolvedPreset.toLowerCase().endsWith('.aep'),
                     ext = isAEP ? '.aep' : '.ffx';
-                const base64 =
-                    await new Promise((r, j) => {
-                        const rd = new FileReader();
-                        rd.onload = () => r(String(rd.result).split(',')[1]);
-                        rd.onerror = j;
-                        rd.readAsDataURL(blob);
-                    });
+                const base64 = await new Promise((r, j) => {
+                    const rd = new FileReader();
+                    rd.onload = () => r(String(rd.result).split(',')[1]);
+                    rd.onerror = j;
+                    rd.readAsDataURL(blob);
+                });
                 const cs = 20000,
                     chunks = [];
                 for (let i = 0; i < base64.length; i += cs) chunks.push(base64.slice(i, i + cs));
@@ -2075,9 +2246,7 @@ document.addEventListener('DOMContentLoaded', async function () {
                                     )) || ''
                                 );
                                 if (!r1 || r1.indexOf('ERR') === 0)
-                                    throw new Error(
-                                        (r1 || 'ERR:No response').replace('ERR:', '')
-                                    );
+                                    throw new Error((r1 || 'ERR:No response').replace('ERR:', ''));
                                 const p = r1.split(':'),
                                     srcId = p[1],
                                     tIdx = p[2],
